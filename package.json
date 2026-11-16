@@ -5,7 +5,7 @@
   "license": "MIT",
   "type": "module",
   "bin": {
-    "evolving": "./dist/cli.js"
+    "evolving": "dist/cli.js"
   },
   "exports": {
     ".": {
@@ -19,7 +19,7 @@
     "schema"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node -e \"require('node:fs').chmodSync('dist/cli.js', 0o755)\"",
     "type-check": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "prepack": "npm run build"
