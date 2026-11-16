@@ -14,7 +14,7 @@ export function createReporter(stamp: string): {
   report: (
     label: string,
     results: StepResult[],
-    options?: { showOutputOnSuccess?: boolean },
+    options?: { showOutputOnSuccess?: boolean; fix?: readonly string[] },
   ) => void;
 } {
   const failed: string[] = [];
@@ -33,7 +33,10 @@ export function createReporter(stamp: string): {
   function report(
     label: string,
     results: StepResult[],
-    { showOutputOnSuccess = false }: { showOutputOnSuccess?: boolean } = {},
+    {
+      showOutputOnSuccess = false,
+      fix,
+    }: { showOutputOnSuccess?: boolean; fix?: readonly string[] } = {},
   ): void {
     const seconds = Math.max(0, ...results.map((r) => r.seconds)).toFixed(1);
     const bad = results.filter((r) => r.code !== 0);
@@ -47,6 +50,9 @@ export function createReporter(stamp: string): {
       failed.push(result.name);
       console.log(`✘ ${result.name} · ${result.seconds.toFixed(1)}s`);
       printOutput(result);
+      if (fix && fix.length > 0) {
+        console.log(`  fix: ${fix.join(" ")}`);
+      }
     }
   }
 

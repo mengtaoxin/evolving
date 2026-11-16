@@ -1,17 +1,20 @@
 #!/usr/bin/env node
 import { loadConfig } from "./load-config.ts";
 import { runCheck } from "./check.ts";
+import { runPrepare } from "./prepare.ts";
 import { runVerify } from "./verify.ts";
 import { printWorkflow } from "./workflow.ts";
 import { runFinish } from "./finish.ts";
 
 const USAGE = `Usage:
   evolving workflow [--config path]
+  evolving prepare [--config path]
   evolving check [--config path]
   evolving verify [suite|all...] [--check] [--e2e] [--config path]
   evolving finish [--config path]
 
 Reads evolving.yml from the current working directory (or --config).
+prepare runs gates.prepare (may write). check and verify are read-only.
 `;
 
 async function main(): Promise<void> {
@@ -39,6 +42,9 @@ async function main(): Promise<void> {
   switch (command) {
     case "workflow":
       printWorkflow(config);
+      return;
+    case "prepare":
+      process.exitCode = await runPrepare(cwd, config);
       return;
     case "check":
       process.exitCode = await runCheck(cwd, config);

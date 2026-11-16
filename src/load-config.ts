@@ -28,6 +28,12 @@ export function parseConfig(raw: unknown, source = "evolving.yml"): EvolvingConf
 
   const workflow = requireArray(raw.workflow, `${source}: workflow`);
   const gates = requireRecord(raw.gates, `${source}: gates`);
+  const prepare =
+    gates.prepare === undefined
+      ? []
+      : requireArray(gates.prepare, `${source}: gates.prepare`).map((item, i) =>
+          parseGateCommand(item, `${source}: gates.prepare[${i}]`),
+        );
   const check = requireArray(gates.check, `${source}: gates.check`).map((item, i) =>
     parseGateCommand(item, `${source}: gates.check[${i}]`),
   );
@@ -50,6 +56,7 @@ export function parseConfig(raw: unknown, source = "evolving.yml"): EvolvingConf
     version: 1,
     workflow: workflow.map((item, i) => parseWorkflowStep(item, `${source}: workflow[${i}]`)),
     gates: {
+      prepare,
       check,
       verify: { detect: "git", suites, always },
     },
@@ -115,6 +122,9 @@ function parseGateCommand(raw: unknown, label: string): GateCommand {
       throw new Error(`${label}.showOutputOnSuccess must be a boolean`);
     }
     cmd.showOutputOnSuccess = obj.showOutputOnSuccess;
+  }
+  if (obj.fix !== undefined) {
+    cmd.fix = requireCommand(obj.fix, `${label}.fix`);
   }
   return cmd;
 }

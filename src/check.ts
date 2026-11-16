@@ -13,6 +13,7 @@ export async function runCheck(cwd: string, config: EvolvingConfig): Promise<num
     const result = await runCommand(step);
     report(step.name ?? step.command.join(" "), [result], {
       showOutputOnSuccess: step.showOutputOnSuccess === true,
+      fix: step.fix,
     });
   }
 

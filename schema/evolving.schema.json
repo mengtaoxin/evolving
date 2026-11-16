@@ -16,6 +16,11 @@
       "additionalProperties": false,
       "required": ["check", "verify"],
       "properties": {
+        "prepare": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/gateCommand" },
+          "description": "Write-allowed steps (format / lint:fix). Run via evolving prepare; never by check/verify."
+        },
         "check": {
           "type": "array",
           "items": { "$ref": "#/$defs/gateCommand" }
@@ -40,7 +45,13 @@
           "type": "object",
           "additionalProperties": { "type": "string" }
         },
-        "showOutputOnSuccess": { "type": "boolean" }
+        "showOutputOnSuccess": { "type": "boolean" },
+        "fix": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Write-side companion printed on check/verify failure; not executed by those commands."
+        }
       }
     },
     "workflowStep": {

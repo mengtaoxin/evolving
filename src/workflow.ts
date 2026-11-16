@@ -16,4 +16,15 @@ export function printWorkflow(config: EvolvingConfig): void {
     }
     console.log("");
   }
+
+  console.log("gates.prepare (writes; run: evolving prepare)");
+  if (config.gates.prepare.length === 0) {
+    console.log("  (none)");
+  } else {
+    for (const step of config.gates.prepare) {
+      const label = step.name ?? step.command.join(" ");
+      console.log(`  - ${label}: ${step.command.join(" ")}`);
+    }
+  }
+  console.log("");
 }

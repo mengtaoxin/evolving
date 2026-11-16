@@ -15,6 +15,7 @@ export {
   suiteIdsFromConfig,
 } from "./detect.ts";
 export { runCheck } from "./check.ts";
+export { runPrepare } from "./prepare.ts";
 export { runVerify } from "./verify.ts";
 export { runFinish } from "./finish.ts";
 export { printWorkflow } from "./workflow.ts";

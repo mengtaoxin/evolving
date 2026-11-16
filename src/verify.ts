@@ -34,6 +34,7 @@ export async function runVerify(
     const result = await runCommand(step);
     report(step.name ?? step.command.join(" "), [result], {
       showOutputOnSuccess: step.showOutputOnSuccess === true,
+      fix: step.fix,
     });
   }
 

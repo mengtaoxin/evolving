@@ -7,6 +7,11 @@ export interface GateCommand {
   env?: Readonly<Record<string, string>>;
   /** When true, non-empty stdout/stderr is printed even on success (e.g. lint warnings). */
   showOutputOnSuccess?: boolean;
+  /**
+   * Write-side companion argv. Printed as a hint when this step fails under
+   * check/verify; never executed by those commands (use `evolving prepare`).
+   */
+  fix?: readonly string[];
 }
 
 export interface WorkflowStep {
@@ -44,6 +49,11 @@ export interface EvolvingConfig {
   version: 1;
   workflow: readonly WorkflowStep[];
   gates: {
+    /**
+     * Write-allowed steps (format / lint:fix). Run via `evolving prepare`.
+     * check and verify never run these.
+     */
+    prepare: readonly GateCommand[];
     check: readonly GateCommand[];
     verify: VerifyGate;
   };

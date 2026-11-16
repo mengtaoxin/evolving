@@ -21,11 +21,19 @@ workflow:
     summary: Update owning docs if a contract changed
 
 gates:
+  prepare:
+    - name: format
+      command: ["npm", "run", "format"]
+    - name: lint:fix
+      command: ["npm", "run", "lint:fix"]
+
   check:
     - name: format:check
       command: ["npm", "run", "format:check"]
+      fix: ["npm", "run", "format"]
     - name: lint
       command: ["npm", "run", "lint"]
+      fix: ["npm", "run", "lint:fix"]
       showOutputOnSuccess: true
     - name: type-check
       command: ["npm", "run", "type-check"]

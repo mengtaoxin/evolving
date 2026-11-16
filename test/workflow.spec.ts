@@ -23,8 +23,12 @@ describe("printWorkflow", () => {
     } finally {
       console.log = original;
     }
-    expect(lines.join("\n")).toContain("[guidance] orient");
-    expect(lines.join("\n")).toContain("[run] verify");
-    expect(lines.join("\n")).toContain("npx evolving verify");
+    const text = lines.join("\n");
+    expect(text).toContain("[guidance] orient");
+    expect(text).toContain("[run] verify");
+    expect(text).toContain("npx evolving verify");
+    expect(text).toContain("gates.prepare");
+    expect(text).toContain("evolving prepare");
+    expect(text).toContain("format: npm run format");
   });
 });
