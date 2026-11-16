@@ -5,11 +5,10 @@ export type {
   ExplainReport,
   ExplainTopicId,
   ExplainTopicRef,
+  FailureSummary,
   GateCommand,
   GateCommandView,
-  OutputMode,
   ReportStep,
-  RunOptions,
   RunReport,
   StatusReport,
   StepResult,
@@ -20,7 +19,13 @@ export type {
   WorkflowStepView,
   WorkflowView,
 } from "./types.ts";
-export { AGENT_CONTRACT, SKIP_WHEN_VOCABULARY, agentContractText } from "./contract.ts";
+export {
+  AGENT_CONTRACT,
+  AGENT_IO_DO,
+  AGENT_IO_DO_NOT,
+  SKIP_WHEN_VOCABULARY,
+  agentContractText,
+} from "./contract.ts";
 export { loadConfig, parseConfig, configPath } from "./load-config.ts";
 export {
   pathMatches,

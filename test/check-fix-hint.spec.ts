@@ -5,7 +5,7 @@ import { runCheck } from "../src/check.ts";
 import { loadConfig } from "../src/load-config.ts";
 
 describe("check fix hint", () => {
-  it("prints the fix companion when a check step fails", async () => {
+  it("includes the fix companion on failed check steps in JSON", async () => {
     const dir = mkdtempSync(join(tmpdir(), "evolving-check-fix-"));
     writeFileSync(
       join(dir, "evolving.yml"),
@@ -25,17 +25,16 @@ gates:
     suites: {}
 `,
     );
-    const lines: string[] = [];
     const originalLog = console.log;
-    console.log = (...args: unknown[]) => {
-      lines.push(args.map(String).join(" "));
-    };
+    console.log = () => {};
+    let report;
     try {
-      const report = await runCheck(dir, loadConfig(dir));
-      expect(report.exit_code).toBe(1);
+      report = await runCheck(dir, loadConfig(dir));
     } finally {
       console.log = originalLog;
     }
-    expect(lines.join("\n")).toContain("fix: npm run format");
+    expect(report.exit_code).toBe(1);
+    expect(report.failure[0]?.fix).toEqual(["npm", "run", "format"]);
+    expect(report.steps[0]?.fix).toEqual(["npm", "run", "format"]);
   });
 });

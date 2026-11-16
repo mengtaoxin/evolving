@@ -12,13 +12,15 @@ export function lastRunPath(cwd: string): string {
 
 /** Persist the latest prepare/check/verify/finish report for agent resume. */
 export function writeLastRun(cwd: string, report: RunReport): RunReport {
+  const path = lastRunPath(cwd);
   const payload: RunReport = {
     ...report,
     finished_at: new Date().toISOString(),
     cwd,
+    last_run_path: path,
   };
   mkdirSync(lastRunDir(cwd), { recursive: true });
-  writeFileSync(lastRunPath(cwd), `${JSON.stringify(payload, null, 2)}\n`);
+  writeFileSync(path, `${JSON.stringify(payload, null, 2)}\n`);
   return payload;
 }
 

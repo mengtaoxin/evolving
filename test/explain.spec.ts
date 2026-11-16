@@ -30,6 +30,12 @@ describe("explain", () => {
     expect(report.topics?.map((t) => t.id)).toEqual(EXPLAIN_TOPICS.map((t) => t.id));
     expect(JSON.stringify(report)).not.toContain("npm run format");
     expect(report.next).toEqual(["explain contract"]);
+    expect(report.detail).toMatchObject({
+      minimal_loop: ["evolving prepare", "evolving verify"],
+      on_failure: "evolving status",
+    });
+    expect(report.how_to_run?.join(" ")).not.toMatch(/\|/);
+    expect(report.how_to_run?.join(" ")).not.toContain("--json");
   });
 
   it("index with fixture summarizes project without dumping gate argv", () => {
@@ -45,7 +51,7 @@ describe("explain", () => {
     expect(report.project?.suite_ids).toEqual(["lib", "app", "shared", "deps"]);
     expect(report.project?.has_prepare).toBe(true);
     expect(report.project?.prepare_count).toBe(2);
-    expect(report.next).toEqual(["explain prepare"]);
+    expect(report.next).toEqual(["prepare"]);
     const blob = JSON.stringify(report);
     expect(blob).not.toContain("npm run format");
     expect(blob).not.toContain("test:lib");
@@ -54,7 +60,7 @@ describe("explain", () => {
   it("explain prepare includes this repo prepare commands", () => {
     const report = buildExplainTopic("prepare", loadFixture());
     expect(report.topic).toBe("prepare");
-    expect(report.how_to_run).toContain("evolving prepare --json");
+    expect(report.how_to_run).toContain("evolving prepare");
     const steps = (report.detail as { steps: Array<{ name?: string; command: string[] }> }).steps;
     expect(steps.map((s) => s.name)).toEqual(["format", "lint:fix"]);
     expect(steps[0]?.command).toEqual(["npm", "run", "format"]);
@@ -73,5 +79,24 @@ describe("explain", () => {
     expect(report.detail).toMatchObject({ contract: AGENT_CONTRACT });
     expect(report.text).toContain("evolving explain");
     expect((report.detail as { contract: unknown }).contract).toEqual(AGENT_CONTRACT);
+    const detail = report.detail as { do: string[]; do_not: string[] };
+    expect(detail.do.length).toBeGreaterThan(0);
+    expect(detail.do_not.some((line) => /head|tail|tee/i.test(line))).toBe(true);
+  });
+
+  it("explain json documents anti-patterns and failure fields", () => {
+    const report = buildExplainTopic("json", null);
+    const detail = report.detail as {
+      do: string[];
+      do_not: string[];
+      run_report_fields: string[];
+    };
+    expect(detail.do_not.some((line) => /head|tail|tee/i.test(line))).toBe(true);
+    expect(detail.run_report_fields).toEqual(
+      expect.arrayContaining(["failure", "last_run_path", "output_preview"]),
+    );
+    expect(report.how_to_run?.join(" ")).not.toMatch(/\|/);
+    expect(report.how_to_run?.join(" ")).not.toContain("--json");
+    expect(report.summary).toMatch(/always one JSON object/i);
   });
 });

@@ -1,4 +1,4 @@
-import type { EvolvingConfig, GateCommand, RunOptions, RunReport } from "./types.ts";
+import type { EvolvingConfig, GateCommand, RunReport } from "./types.ts";
 import {
   changedPathsFromGit,
   invalidSuiteArgs,
@@ -6,45 +6,35 @@ import {
   suiteIdsFromConfig,
 } from "./detect.ts";
 import { emitRun } from "./emit.ts";
-import {
-  buildRunReport,
-  createReporter,
-  printRunSummary,
-  timestamp,
-} from "./report.ts";
+import { buildRunReport, createReporter, timestamp } from "./report.ts";
 import { createRunner, installSignalHandlers } from "./run.ts";
 
 export async function runVerify(
   cwd: string,
   config: EvolvingConfig,
   args: readonly string[],
-  options: RunOptions = {},
 ): Promise<RunReport> {
-  const mode = options.mode ?? "human";
   const checkOnly = args.includes("--check");
   const suiteArgs = args.filter((arg) => !arg.startsWith("--"));
   const suiteIds = suiteIdsFromConfig(config.gates.verify);
   const invalid = invalidSuiteArgs(suiteArgs, suiteIds);
   if (invalid.length > 0) {
     const message = `Unknown argument(s): ${invalid.join(", ")}. Expected ${[...suiteIds, "all"].join(", ")}, --check, --e2e.`;
-    if (mode === "human") console.error(message);
     return emitRun(
       cwd,
       buildRunReport({
         command: "verify",
         startedAt: Date.now(),
         failed: ["args"],
-        steps: mode === "json"
-          ? [
-              {
-                name: "args",
-                ok: false,
-                code: 2,
-                seconds: 0,
-                output_preview: message,
-              },
-            ]
-          : [],
+        steps: [
+          {
+            name: "args",
+            ok: false,
+            code: 2,
+            seconds: 0,
+            output_preview: message,
+          },
+        ],
         exitCode: 2,
         verify: {
           check_only: checkOnly,
@@ -53,7 +43,6 @@ export async function runVerify(
           always: [],
         },
       }),
-      mode,
     );
   }
 
@@ -61,7 +50,7 @@ export async function runVerify(
   const startedAt = Date.now();
   const { children, runCommand } = createRunner(cwd);
   installSignalHandlers(children);
-  const { failed, steps, report } = createReporter(stamp, mode);
+  const { failed, steps, report } = createReporter(stamp);
 
   for (const step of config.gates.check) {
     const result = await runCommand(step);
@@ -80,13 +69,6 @@ export async function runVerify(
     const changed = changedPathsFromGit(cwd);
     changedPathsCount = changed.length;
     selected = resolveSuiteIds(config.gates.verify, suiteArgs, changed);
-    if (selected.length === 0 && mode === "human") {
-      if (suiteArgs.length > 0) {
-        console.log("– tests: skipped (selected suite(s) matched none)");
-      } else {
-        console.log("– tests: skipped (no matching changes; pass a suite id or all to force)");
-      }
-    }
     for (const id of selected) {
       const suite = config.gates.verify.suites[id];
       if (!suite?.command) continue;
@@ -107,19 +89,19 @@ export async function runVerify(
     }
   }
 
-  const label = checkOnly ? "check" : "verify";
-  const runReport = buildRunReport({
-    command: "verify",
-    startedAt,
-    failed,
-    steps,
-    verify: {
-      check_only: checkOnly,
-      changed_paths_count: changedPathsCount,
-      selected_suites: selected,
-      always: alwaysNames,
-    },
-  });
-  if (mode === "human") printRunSummary(label, failed, runReport.seconds);
-  return emitRun(cwd, runReport, mode);
+  return emitRun(
+    cwd,
+    buildRunReport({
+      command: "verify",
+      startedAt,
+      failed,
+      steps,
+      verify: {
+        check_only: checkOnly,
+        changed_paths_count: changedPathsCount,
+        selected_suites: selected,
+        always: alwaysNames,
+      },
+    }),
+  );
 }

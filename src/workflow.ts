@@ -37,41 +37,8 @@ export function buildWorkflowView(config: EvolvingConfig): WorkflowView {
   };
 }
 
-export function printWorkflow(config: EvolvingConfig, json = false): void {
-  const view = buildWorkflowView(config);
-  if (json) {
-    printJson(view);
-    return;
-  }
-
-  console.log("evolving workflow");
-  console.log("");
-  for (const [index, step] of view.workflow.entries()) {
-    const n = index + 1;
-    const skip = step.skip_when ? ` (skip_when: ${step.skip_when})` : "";
-    console.log(`${n}. [${step.kind}] ${step.id}${skip}`);
-    if (step.summary) console.log(`   ${step.summary}`);
-    if (step.refs && step.refs.length > 0) {
-      console.log(`   refs: ${step.refs.join(", ")}`);
-    }
-    if (step.kind === "run" && step.command) {
-      console.log(`   run: ${step.command.join(" ")}`);
-    }
-    console.log("");
-  }
-
-  console.log("gates.prepare (writes; run: evolving prepare)");
-  if (view.gates.prepare.length === 0) {
-    console.log("  (none)");
-  } else {
-    for (const step of view.gates.prepare) {
-      const label = step.name ?? step.command.join(" ");
-      console.log(`  - ${label}: ${step.command.join(" ")}`);
-    }
-  }
-  console.log("");
-  console.log("contract: prepare → verify; guidance is agent-side; finish runs kind:run only");
-  console.log("");
+export function printWorkflow(config: EvolvingConfig): void {
+  printJson(buildWorkflowView(config));
 }
 
 function gateView(step: GateCommand): GateCommandView {

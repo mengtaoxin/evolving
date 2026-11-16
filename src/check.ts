@@ -1,24 +1,14 @@
 import { emitRun } from "./emit.ts";
-import {
-  buildRunReport,
-  createReporter,
-  printRunSummary,
-  timestamp,
-} from "./report.ts";
+import { buildRunReport, createReporter, timestamp } from "./report.ts";
 import { createRunner, installSignalHandlers } from "./run.ts";
-import type { EvolvingConfig, RunOptions, RunReport } from "./types.ts";
+import type { EvolvingConfig, RunReport } from "./types.ts";
 
-export async function runCheck(
-  cwd: string,
-  config: EvolvingConfig,
-  options: RunOptions = {},
-): Promise<RunReport> {
-  const mode = options.mode ?? "human";
+export async function runCheck(cwd: string, config: EvolvingConfig): Promise<RunReport> {
   const stamp = timestamp(new Date());
   const startedAt = Date.now();
   const { children, runCommand } = createRunner(cwd);
   installSignalHandlers(children);
-  const { failed, steps, report } = createReporter(stamp, mode);
+  const { failed, steps, report } = createReporter(stamp);
 
   for (const step of config.gates.check) {
     const result = await runCommand(step);
@@ -29,12 +19,13 @@ export async function runCheck(
     });
   }
 
-  const runReport = buildRunReport({
-    command: "check",
-    startedAt,
-    failed,
-    steps,
-  });
-  if (mode === "human") printRunSummary("check", failed, runReport.seconds);
-  return emitRun(cwd, runReport, mode);
+  return emitRun(
+    cwd,
+    buildRunReport({
+      command: "check",
+      startedAt,
+      failed,
+      steps,
+    }),
+  );
 }

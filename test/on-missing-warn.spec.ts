@@ -6,10 +6,7 @@ import { loadConfig, parseConfig } from "../src/load-config.ts";
 
 const MISSING_BIN = "evolving-not-installed-bin-9f3a2c";
 
-function writeCheckConfig(
-  dir: string,
-  checkYaml: string,
-): void {
+function writeCheckConfig(dir: string, checkYaml: string): void {
   writeFileSync(
     join(dir, "evolving.yml"),
     `
@@ -28,15 +25,11 @@ ${checkYaml}
   );
 }
 
-async function captureCheck(dir: string): Promise<{ code: number; lines: string[] }> {
-  const lines: string[] = [];
+async function captureCheck(dir: string) {
   const originalLog = console.log;
-  console.log = (...args: unknown[]) => {
-    lines.push(args.map(String).join(" "));
-  };
+  console.log = () => {};
   try {
-    const report = await runCheck(dir, loadConfig(dir));
-    return { code: report.exit_code, lines };
+    return await runCheck(dir, loadConfig(dir));
   } finally {
     console.log = originalLog;
   }
@@ -77,13 +70,12 @@ describe("onMissing: warn", () => {
       onMissing: warn
 `,
     );
-    const { code, lines } = await captureCheck(dir);
-    const text = lines.join("\n");
-    expect(code).toBe(0);
-    expect(text).toMatch(/⚠.*secrets/);
-    expect(text).toMatch(/not installed|missing|install/i);
-    expect(text).toContain("✔ check passed");
-    expect(text).not.toContain("✘ secrets");
+    const report = await captureCheck(dir);
+    expect(report.exit_code).toBe(0);
+    expect(report.ok).toBe(true);
+    expect(report.failed).toEqual([]);
+    expect(report.steps[0]?.missing_executable).toBe(true);
+    expect(report.steps[0]?.ok).toBe(true);
   });
 
   it("still fails check when a missing executable has no onMissing", async () => {
@@ -94,11 +86,11 @@ describe("onMissing: warn", () => {
       command: ["${MISSING_BIN}"]
 `,
     );
-    const { code, lines } = await captureCheck(dir);
-    const text = lines.join("\n");
-    expect(code).toBe(1);
-    expect(text).toContain("✘ secrets");
-    expect(text).toContain("✘ check failed");
+    const report = await captureCheck(dir);
+    expect(report.exit_code).toBe(1);
+    expect(report.failed).toContain("secrets");
+    expect(report.steps[0]?.missing_executable).toBe(true);
+    expect(report.steps[0]?.ok).toBe(false);
   });
 
   it("still fails when the tool is installed but reports findings", async () => {
@@ -110,8 +102,8 @@ describe("onMissing: warn", () => {
       onMissing: warn
 `,
     );
-    const { code, lines } = await captureCheck(dir);
-    expect(code).toBe(1);
-    expect(lines.join("\n")).toContain("✘ secrets");
+    const report = await captureCheck(dir);
+    expect(report.exit_code).toBe(1);
+    expect(report.failed).toContain("secrets");
   });
 });

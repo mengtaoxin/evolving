@@ -10,18 +10,18 @@ import { runVerify } from "./verify.ts";
 import { printWorkflow } from "./workflow.ts";
 
 const USAGE = `Usage:
-  evolving explain [topic] [--json] [--config path]
-  evolving workflow [--json] [--config path]
-  evolving prepare [--json] [--config path]
-  evolving check [--json] [--config path]
-  evolving verify [suite|all...] [--check] [--e2e] [--json] [--config path]
-  evolving finish [--json] [--config path]
-  evolving status [--json] [--config path]
-  evolving agent-contract [--json]   # alias: explain contract
+  evolving explain [topic] [--config path]
+  evolving workflow [--config path]
+  evolving prepare [--config path]
+  evolving check [--config path]
+  evolving verify [suite|all...] [--check] [--e2e] [--config path]
+  evolving finish [--config path]
+  evolving status [--full] [--config path]
+  evolving agent-contract   # alias: explain contract
 
-For agents: evolving explain [--json]
+For agents: evolving explain
 prepare runs gates.prepare (may write). check and verify are read-only.
---json prints a single JSON object on stdout (agent-friendly).
+stdout is always one JSON object.
 `;
 
 async function main(): Promise<void> {
@@ -35,9 +35,8 @@ async function main(): Promise<void> {
   const command = argv[0] as string;
   const rest = argv.slice(1);
   const configFlag = takeFlagValue(rest, "--config");
-  const json = takeFlag(rest, "--json");
+  const full = takeFlag(rest, "--full");
   const cwd = process.cwd();
-  const mode = json ? "json" : "human";
 
   if (command === "explain" || command === "agent-contract") {
     const topic = command === "agent-contract" ? "contract" : rest.find((a) => !a.startsWith("--"));
@@ -47,13 +46,13 @@ async function main(): Promise<void> {
     }
     const { config, error } = tryLoadConfig(cwd, configFlag);
     const report = resolveExplain(topic, config, cwd, error);
-    printExplain(report, json);
+    printExplain(report);
     process.exitCode = report.exit_code;
     return;
   }
 
   if (command === "status") {
-    printStatus(cwd, json);
+    printStatus(cwd, { full });
     return;
   }
 
@@ -61,35 +60,31 @@ async function main(): Promise<void> {
   try {
     config = loadConfig(cwd, configFlag);
   } catch (err) {
-    if (json) {
-      printJson({
-        evolving: 1,
-        ok: false,
-        exit_code: 2,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    } else {
-      console.error(err instanceof Error ? err.message : err);
-    }
+    printJson({
+      evolving: 1,
+      ok: false,
+      exit_code: 2,
+      error: err instanceof Error ? err.message : String(err),
+    });
     process.exitCode = 2;
     return;
   }
 
   switch (command) {
     case "workflow":
-      printWorkflow(config, json);
+      printWorkflow(config);
       return;
     case "prepare":
-      process.exitCode = (await runPrepare(cwd, config, { mode })).exit_code;
+      process.exitCode = (await runPrepare(cwd, config)).exit_code;
       return;
     case "check":
-      process.exitCode = (await runCheck(cwd, config, { mode })).exit_code;
+      process.exitCode = (await runCheck(cwd, config)).exit_code;
       return;
     case "verify":
-      process.exitCode = (await runVerify(cwd, config, rest, { mode })).exit_code;
+      process.exitCode = (await runVerify(cwd, config, rest)).exit_code;
       return;
     case "finish":
-      process.exitCode = (await runFinish(cwd, config, { mode })).exit_code;
+      process.exitCode = (await runFinish(cwd, config)).exit_code;
       return;
     default:
       console.error(`Unknown command: ${command}\n`);

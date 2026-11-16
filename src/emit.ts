@@ -1,10 +1,10 @@
 import { writeLastRun } from "./last-run.ts";
-import { printJson } from "./report.ts";
-import type { OutputMode, RunReport } from "./types.ts";
+import { printJson, slimSuccessReport } from "./report.ts";
+import type { RunReport } from "./types.ts";
 
-/** Persist last-run and optionally print JSON (human output already streamed). */
-export function emitRun(cwd: string, report: RunReport, mode: OutputMode): RunReport {
+/** Persist last-run and print JSON (success is slim; failure is full). */
+export function emitRun(cwd: string, report: RunReport): RunReport {
   const persisted = writeLastRun(cwd, report);
-  if (mode === "json") printJson(persisted);
+  printJson(persisted.ok ? slimSuccessReport(persisted) : persisted);
   return persisted;
 }

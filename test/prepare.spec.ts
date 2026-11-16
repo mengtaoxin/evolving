@@ -26,15 +26,21 @@ gates:
     suites: {}
 `,
     );
-    const config = loadConfig(dir);
-    const report = await runPrepare(dir, config);
+    const original = console.log;
+    console.log = () => {};
+    let report;
+    try {
+      report = await runPrepare(dir, loadConfig(dir));
+    } finally {
+      console.log = original;
+    }
     expect(report.exit_code).toBe(0);
-    expect(await import("node:fs").then((fs) => fs.readFileSync(join(dir, "prepared.txt"), "utf8"))).toBe(
-      "ok",
-    );
+    expect(
+      await import("node:fs").then((fs) => fs.readFileSync(join(dir, "prepared.txt"), "utf8")),
+    ).toBe("ok");
   });
 
-  it("exits 0 with a skip message when prepare is empty", async () => {
+  it("exits 0 with empty steps when prepare is empty", async () => {
     const dir = mkdtempSync(join(tmpdir(), "evolving-prepare-empty-"));
     writeFileSync(
       join(dir, "evolving.yml"),
@@ -57,12 +63,14 @@ gates:
     console.log = (...args: unknown[]) => {
       lines.push(args.map(String).join(" "));
     };
+    let report;
     try {
-      const report = await runPrepare(dir, loadConfig(dir));
-      expect(report.exit_code).toBe(0);
+      report = await runPrepare(dir, loadConfig(dir));
     } finally {
       console.log = original;
     }
-    expect(lines.join("\n")).toMatch(/prepare: no steps/);
+    expect(report.exit_code).toBe(0);
+    expect(report.steps).toEqual([]);
+    expect(JSON.parse(lines[0] as string).command).toBe("prepare");
   });
 });

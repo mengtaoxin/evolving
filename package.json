@@ -1,6 +1,6 @@
 {
   "name": "@mengtaoxin/evolving",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Declarative change-finish workflow and serial prepare/check/verify runner driven by evolving.yml",
   "license": "MIT",
   "type": "module",

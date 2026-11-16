@@ -1,6 +1,6 @@
 import { writeFileSync } from "node:fs";
 import type {
-  OutputMode,
+  FailureSummary,
   ReportStep,
   RunCommandName,
   RunReport,
@@ -9,6 +9,7 @@ import type {
 } from "./types.ts";
 
 const MAX_PRINTED_LINES = 40;
+const ERROR_LINE_RE = /Error|FAIL|error:|✘/i;
 
 export function timestamp(date: Date): string {
   const pad = (value: number) => String(value).padStart(2, "0");
@@ -16,20 +17,34 @@ export function timestamp(date: Date): string {
   return `${day}-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
 }
 
-function outputPreview(output: string): string {
+/** Prefer error window or tail when output is long; head only if short enough. */
+export function outputPreview(output: string, maxLines = MAX_PRINTED_LINES): string {
   const lines = output.split("\n");
-  if (lines.length <= MAX_PRINTED_LINES) return output;
-  return `${lines.slice(0, MAX_PRINTED_LINES).join("\n")}\n… ${lines.length - MAX_PRINTED_LINES} more lines`;
+  if (lines.length <= maxLines) return output;
+
+  const errorIndex = lines.findIndex((line) => ERROR_LINE_RE.test(line));
+  if (errorIndex >= 0) {
+    const half = Math.floor(maxLines / 2);
+    let start = Math.max(0, errorIndex - half);
+    let end = Math.min(lines.length, start + maxLines);
+    start = Math.max(0, end - maxLines);
+    const slice = lines.slice(start, end);
+    const parts: string[] = [];
+    if (start > 0) parts.push(`… ${start} earlier lines`);
+    parts.push(...slice);
+    if (end < lines.length) parts.push(`… ${lines.length - end} more lines`);
+    return parts.join("\n");
+  }
+
+  const start = lines.length - maxLines;
+  return `… ${start} earlier lines\n${lines.slice(start).join("\n")}`;
 }
 
 function logPathFor(name: string, stamp: string): string {
   return `/tmp/evolving-${name.replace(/[^\w-]+/g, "-")}-${stamp}.log`;
 }
 
-export function createReporter(
-  stamp: string,
-  mode: OutputMode = "human",
-): {
+export function createReporter(stamp: string): {
   failed: string[];
   steps: ReportStep[];
   report: (
@@ -51,14 +66,8 @@ export function createReporter(
     return log;
   }
 
-  function printOutput(result: StepResult, log: string): void {
-    const preview = outputPreview(result.output);
-    for (const line of preview.split("\n")) console.log(`  ${line}`);
-    console.log(`  Log: ${log}`);
-  }
-
   function report(
-    label: string,
+    _label: string,
     results: StepResult[],
     {
       showOutputOnSuccess = false,
@@ -70,14 +79,6 @@ export function createReporter(
       onMissing?: "warn";
     } = {},
   ): void {
-    const seconds = Math.max(0, ...results.map((r) => r.seconds));
-    const warnedMissing =
-      onMissing === "warn" ? results.filter((r) => r.missingExecutable === true) : [];
-    const bad = results.filter(
-      (r) => r.code !== 0 && !(onMissing === "warn" && r.missingExecutable === true),
-    );
-    const noisy = showOutputOnSuccess ? results.filter((r) => r.code === 0 && r.output) : [];
-
     for (const result of results) {
       const isMissingWarn = onMissing === "warn" && result.missingExecutable === true;
       const isBad = result.code !== 0 && !isMissingWarn;
@@ -86,6 +87,9 @@ export function createReporter(
         isMissingWarn ||
         (showOutputOnSuccess && result.code === 0 && !!result.output);
       const log = shouldCapture ? writeLog(result) : undefined;
+      const attachPreview =
+        result.output &&
+        (isBad || isMissingWarn || (showOutputOnSuccess && result.code === 0));
       const step: ReportStep = {
         name: result.name,
         ok: !isBad,
@@ -93,49 +97,30 @@ export function createReporter(
         seconds: result.seconds,
         ...(fix && isBad ? { fix: [...fix] } : {}),
         ...(log ? { log } : {}),
-        ...(result.output && (isBad || isMissingWarn || showOutputOnSuccess)
-          ? { output_preview: outputPreview(result.output) }
-          : {}),
+        ...(attachPreview ? { output_preview: outputPreview(result.output) } : {}),
         ...(result.missingExecutable ? { missing_executable: true } : {}),
       };
       steps.push(step);
-    }
-
-    if (mode === "json") {
-      for (const result of bad) failed.push(result.name);
-      return;
-    }
-
-    if (bad.length === 0 && warnedMissing.length === 0) {
-      console.log(`✔ ${label} · ${seconds.toFixed(1)}s`);
-    } else if (bad.length === 0 && warnedMissing.length > 0) {
-      console.log(`⚠ ${label} · ${seconds.toFixed(1)}s`);
-    }
-
-    for (const result of warnedMissing) {
-      const exe = result.name === label ? result.name : `${label} / ${result.name}`;
-      console.log(
-        `  warn: ${exe} not installed (missing executable); install it to enable this check`,
-      );
-      const log = logPathFor(result.name, stamp);
-      if (result.output) printOutput(result, log);
-    }
-
-    for (const result of noisy) {
-      console.log(`  ${result.name} warnings:`);
-      printOutput(result, logPathFor(result.name, stamp));
-    }
-    for (const result of bad) {
-      failed.push(result.name);
-      console.log(`✘ ${result.name} · ${result.seconds.toFixed(1)}s`);
-      printOutput(result, logPathFor(result.name, stamp));
-      if (fix && fix.length > 0) {
-        console.log(`  fix: ${fix.join(" ")}`);
-      }
+      if (isBad) failed.push(result.name);
     }
   }
 
   return { failed, steps, report };
+}
+
+export function buildFailureSummaries(
+  failed: readonly string[],
+  steps: readonly ReportStep[],
+): FailureSummary[] {
+  const byName = new Map(steps.map((s) => [s.name, s]));
+  return failed.map((name) => {
+    const step = byName.get(name);
+    const summary: FailureSummary = { name };
+    if (step?.fix) summary.fix = [...step.fix];
+    if (step?.log) summary.log = step.log;
+    if (step?.output_preview) summary.output_preview = step.output_preview;
+    return summary;
+  });
 }
 
 export function buildRunReport(input: {
@@ -147,8 +132,8 @@ export function buildRunReport(input: {
   exitCode?: number;
 }): RunReport {
   const seconds = Number(((Date.now() - input.startedAt) / 1000).toFixed(1));
-  const exit_code =
-    input.exitCode ?? (input.failed.length === 0 ? 0 : 1);
+  const exit_code = input.exitCode ?? (input.failed.length === 0 ? 0 : 1);
+  const failure = buildFailureSummaries(input.failed, input.steps);
   return {
     evolving: 1,
     command: input.command,
@@ -157,22 +142,32 @@ export function buildRunReport(input: {
     seconds,
     steps: input.steps,
     failed: [...input.failed],
+    failure,
+    step_count: input.steps.length,
+    passed_count: input.steps.filter((s) => s.ok).length,
     ...(input.verify ? { verify: input.verify } : {}),
+  };
+}
+
+/** Compact stdout view for successful runs (disk keeps full report). */
+export function slimSuccessReport(report: RunReport): Record<string, unknown> {
+  return {
+    evolving: report.evolving,
+    command: report.command,
+    ok: true,
+    exit_code: report.exit_code,
+    seconds: report.seconds,
+    failed: [],
+    failure: [],
+    step_count: report.step_count ?? report.steps.length,
+    passed_count: report.passed_count ?? report.steps.filter((s) => s.ok).length,
+    ...(report.last_run_path ? { last_run_path: report.last_run_path } : {}),
+    ...(report.verify ? { verify: report.verify } : {}),
+    ...(report.finished_at ? { finished_at: report.finished_at } : {}),
+    ...(report.cwd ? { cwd: report.cwd } : {}),
   };
 }
 
 export function printJson(value: unknown): void {
   console.log(JSON.stringify(value));
-}
-
-export function printRunSummary(
-  command: string,
-  failed: readonly string[],
-  seconds: number,
-): void {
-  if (failed.length === 0) {
-    console.log(`✔ ${command} passed · ${seconds.toFixed(1)}s`);
-  } else {
-    console.log(`✘ ${command} failed: ${failed.join(", ")} · ${seconds.toFixed(1)}s`);
-  }
 }

@@ -12,7 +12,7 @@ const fixturePath = join(
 );
 
 describe("printWorkflow", () => {
-  it("prints guidance and run steps", () => {
+  it("prints JSON workflow view", () => {
     const config = parseConfig(parseYaml(readFileSync(fixturePath, "utf8")));
     const lines: string[] = [];
     const original = console.log;
@@ -24,15 +24,11 @@ describe("printWorkflow", () => {
     } finally {
       console.log = original;
     }
-    const text = lines.join("\n");
-    expect(text).toContain("[guidance] orient");
-    expect(text).toContain("[run] prepare");
-    expect(text).toContain("npx evolving prepare");
-    expect(text).toContain("[run] verify");
-    expect(text).toContain("npx evolving verify");
-    expect(text).toContain("gates.prepare");
-    expect(text).toContain("format: npm run format");
-    expect(text).toContain("contract:");
+    expect(lines).toHaveLength(1);
+    const view = JSON.parse(lines[0] as string);
+    expect(view.command).toBe("workflow");
+    expect(view.workflow.map((s: { id: string }) => s.id)).toContain("prepare");
+    expect(view.gates.prepare.some((s: { name?: string }) => s.name === "format")).toBe(true);
   });
 
   it("buildWorkflowView includes contract and gates", () => {

@@ -12,8 +12,11 @@ describe("agent contract", () => {
     expect(text).toContain("evolving explain");
     expect(text).toContain("evolving prepare");
     expect(text).toContain("evolving verify");
-    expect(text).toContain("--json");
+    expect(text).toContain("always one JSON object");
+    expect(text).not.toContain("--json");
     expect(text).toContain("kind: run");
+    expect(text).toContain("do_not:");
+    expect(text).toMatch(/head|tail|tee/i);
     for (const token of SKIP_WHEN_VOCABULARY) {
       expect(text).toContain(token);
     }

@@ -73,13 +73,9 @@ export interface StepResult {
   missingExecutable?: boolean;
 }
 
-export type OutputMode = "human" | "json";
-
-export type RunOptions = { mode?: OutputMode };
-
 export type RunCommandName = "prepare" | "check" | "verify" | "finish";
 
-/** One gate/suite step as exposed to agents (--json / last-run). */
+/** One gate/suite step as exposed to agents (JSON stdout / last-run). */
 export interface ReportStep {
   name: string;
   ok: boolean;
@@ -89,6 +85,14 @@ export interface ReportStep {
   log?: string;
   output_preview?: string;
   missing_executable?: boolean;
+}
+
+/** Top-level failure summary so agents need not scan steps[]. */
+export interface FailureSummary {
+  name: string;
+  fix?: readonly string[];
+  log?: string;
+  output_preview?: string;
 }
 
 export interface VerifyReportMeta {
@@ -106,6 +110,12 @@ export interface RunReport {
   seconds: number;
   steps: readonly ReportStep[];
   failed: readonly string[];
+  /** Structured failures (name / fix / log / output_preview). Empty on success. */
+  failure: readonly FailureSummary[];
+  /** Absolute path to .evolving/last-run.json after persist. */
+  last_run_path?: string;
+  step_count?: number;
+  passed_count?: number;
   verify?: VerifyReportMeta;
   finished_at?: string;
   cwd?: string;
@@ -169,6 +179,10 @@ export interface StatusReport {
   command: "status";
   state: "none" | "ok" | "failed";
   ok: boolean | null;
+  failed?: readonly string[];
+  failure?: readonly FailureSummary[];
+  last_run_path?: string;
+  /** Present when status --full, or omitted on slim default. */
   last_run?: RunReport;
   next: readonly string[];
 }

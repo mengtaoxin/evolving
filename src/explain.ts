@@ -1,4 +1,10 @@
-import { AGENT_CONTRACT, agentContractText, SKIP_WHEN_VOCABULARY } from "./contract.ts";
+import {
+  AGENT_CONTRACT,
+  AGENT_IO_DO,
+  AGENT_IO_DO_NOT,
+  agentContractText,
+  SKIP_WHEN_VOCABULARY,
+} from "./contract.ts";
 import { printJson } from "./report.ts";
 import { buildStatus } from "./status.ts";
 import type {
@@ -10,6 +16,11 @@ import type {
   GateCommand,
 } from "./types.ts";
 
+const AGENT_IO_DETAIL = {
+  do: [...AGENT_IO_DO],
+  do_not: [...AGENT_IO_DO_NOT],
+} as const;
+
 export const EXPLAIN_TOPICS: readonly ExplainTopicRef[] = [
   { id: "contract", summary: "Fixed agent protocol (order, guidance, finish)" },
   { id: "prepare", summary: "Write-allowed gates (format / lint:fix)" },
@@ -18,7 +29,7 @@ export const EXPLAIN_TOPICS: readonly ExplainTopicRef[] = [
   { id: "finish", summary: "Run workflow kind:run steps only" },
   { id: "workflow", summary: "This repo checklist (guidance + run)" },
   { id: "status", summary: "Resume from .evolving/last-run.json" },
-  { id: "json", summary: "--json RunReport shape for agents" },
+  { id: "json", summary: "RunReport / JSON stdout shape for agents" },
   { id: "guidance", summary: "Agent-evaluated skip_when / guidance steps" },
 ];
 
@@ -40,15 +51,20 @@ export function buildExplainIndex(
     command: "explain",
     topic: "index",
     summary:
-      "evolving is a project-agnostic change-finish gate runner and checklist. It is not an agent runtime. Drill into a topic before running commands.",
+      "evolving is a project-agnostic change-finish gate runner and checklist. It is not an agent runtime. Default loop: prepare then verify; drill a topic only when first using evolving or unclear.",
     ok: true,
     exit_code: 0,
     contract: AGENT_CONTRACT,
     topics: EXPLAIN_TOPICS,
     project,
+    detail: {
+      minimal_loop: ["evolving prepare", "evolving verify"],
+      on_failure: "evolving status",
+      drill_when: "first time using evolving, or when a specific topic is unclear",
+    },
     next,
     ...(configError ? { error: configError } : {}),
-    how_to_run: ["evolving explain <topic> --json", "evolving prepare --json", "evolving verify --json"],
+    how_to_run: ["evolving prepare", "evolving verify", "evolving status"],
   };
 }
 
@@ -60,8 +76,12 @@ export function buildExplainTopic(
     case "contract":
       return topicBase(topic, {
         summary: "Stable protocol agents must follow for this package.",
-        detail: { contract: AGENT_CONTRACT, text: agentContractText() },
-        how_to_run: ["evolving explain contract --json"],
+        detail: {
+          contract: AGENT_CONTRACT,
+          text: agentContractText(),
+          ...AGENT_IO_DETAIL,
+        },
+        how_to_run: ["evolving explain contract"],
         see_also: ["prepare", "verify", "guidance", "json"],
         text: agentContractText(),
       });
@@ -74,7 +94,7 @@ export function buildExplainTopic(
           steps: config ? config.gates.prepare.map(gateDetail) : null,
           note: "check/verify never run these steps.",
         },
-        how_to_run: ["evolving prepare --json"],
+        how_to_run: ["evolving prepare"],
         see_also: ["check", "verify", "json"],
       });
     case "check":
@@ -84,7 +104,7 @@ export function buildExplainTopic(
           readonly: true,
           steps: config ? config.gates.check.map(gateDetail) : null,
         },
-        how_to_run: ["evolving check --json", "evolving verify --check --json"],
+        how_to_run: ["evolving check", "evolving verify --check"],
         see_also: ["prepare", "verify", "json"],
       });
     case "verify":
@@ -113,7 +133,7 @@ export function buildExplainTopic(
             check: "static gates only (--check)",
           },
         },
-        how_to_run: ["evolving verify --json", "evolving verify all --json", "evolving verify --check --json"],
+        how_to_run: ["evolving verify", "evolving verify all", "evolving verify --check"],
         see_also: ["prepare", "check", "status", "json"],
       });
     case "finish":
@@ -130,13 +150,13 @@ export function buildExplainTopic(
             ? config.workflow.filter((s) => s.kind === "guidance").map((s) => s.id)
             : null,
         },
-        how_to_run: ["evolving finish --json"],
+        how_to_run: ["evolving finish"],
         see_also: ["workflow", "prepare", "verify", "guidance"],
       });
     case "workflow":
       return topicBase(topic, {
         summary:
-          "Repo checklist. Guidance is agent-evaluated; run steps are what finish executes. For a full snapshot use evolving workflow --json.",
+          "Repo checklist. Guidance is agent-evaluated; run steps are what finish executes. For a full snapshot use evolving workflow.",
         detail: {
           steps: config
             ? config.workflow.map((s) => ({
@@ -152,7 +172,7 @@ export function buildExplainTopic(
             ? config.gates.prepare.map((s) => s.name ?? s.command.join(" "))
             : null,
         },
-        how_to_run: ["evolving workflow --json", "evolving explain workflow --json"],
+        how_to_run: ["evolving workflow", "evolving explain workflow"],
         see_also: ["guidance", "finish", "prepare", "verify"],
       });
     case "status":
@@ -161,14 +181,20 @@ export function buildExplainTopic(
         detail: {
           path: ".evolving/last-run.json",
           states: ["none", "ok", "failed"],
+          default_json: "slim: state, failed, failure, last_run_path, next (no embedded last_run)",
+          full: "status --full embeds last_run",
+          always_next:
+            "If gates.verify.always failed, next is full verify (not selected_suites replay)",
         },
-        how_to_run: ["evolving status --json"],
+        how_to_run: ["evolving status", "evolving status --full"],
         see_also: ["json", "prepare", "verify"],
       });
     case "json":
       return topicBase(topic, {
-        summary: "Pass --json on every evolving command. stdout is one JSON object; full logs stay in /tmp.",
+        summary:
+          "stdout is always one JSON object; full logs stay in step.log.",
         detail: {
+          ...AGENT_IO_DETAIL,
           run_report_fields: [
             "evolving",
             "command",
@@ -177,14 +203,32 @@ export function buildExplainTopic(
             "seconds",
             "steps",
             "failed",
+            "failure",
+            "last_run_path",
             "verify",
             "fix",
             "log",
             "output_preview",
           ],
-          explain_fields: ["topic", "summary", "project", "detail", "how_to_run", "see_also", "next"],
+          output_preview:
+            "Enough to locate the error (tail or Error/FAIL window). Read step.log for full text.",
+          success_json: "Compressed: ok, seconds, counts, last_run_path; failure[] empty",
+          explain_fields: [
+            "topic",
+            "summary",
+            "project",
+            "detail",
+            "how_to_run",
+            "see_also",
+            "next",
+          ],
         },
-        how_to_run: ["evolving explain --json", "evolving prepare --json", "evolving verify --json"],
+        how_to_run: [
+          "evolving explain",
+          "evolving prepare",
+          "evolving verify",
+          "evolving status",
+        ],
         see_also: ["status", "contract"],
       });
     case "guidance":
@@ -204,7 +248,7 @@ export function buildExplainTopic(
                 }))
             : null,
         },
-        how_to_run: ["evolving explain guidance --json", "evolving explain workflow --json"],
+        how_to_run: ["evolving explain guidance", "evolving explain workflow"],
         see_also: ["workflow", "finish", "contract"],
       });
   }
@@ -237,59 +281,8 @@ export function resolveExplain(
   return report;
 }
 
-export function printExplain(report: ExplainReport, json: boolean): void {
-  if (json) {
-    printJson(report);
-    return;
-  }
-  if (report.topic === "index") {
-    console.log("evolving explain");
-    console.log("");
-    console.log(report.summary);
-    console.log("");
-    console.log(`contract.order: ${report.contract.order.join(" → ")}`);
-    if (report.error) {
-      console.log(`config: ${report.error}`);
-    } else if (report.project) {
-      const p = report.project;
-      console.log(
-        `project: workflow=[${p.workflow_ids.join(", ")}] suites=[${p.suite_ids.join(", ") || "(none)"}] prepare=${p.has_prepare ? p.prepare_count : 0}`,
-      );
-    } else {
-      console.log("project: (no evolving.yml loaded)");
-    }
-    console.log("");
-    console.log("topics:");
-    for (const t of report.topics ?? []) {
-      console.log(`  - ${t.id}: ${t.summary}`);
-    }
-    console.log("");
-    if (report.next && report.next.length > 0) {
-      console.log(`next: evolving ${report.next.join(" ")}`);
-    }
-    return;
-  }
-
-  console.log(`evolving explain ${report.topic}`);
-  console.log("");
-  console.log(report.summary);
-  if (report.text) {
-    console.log("");
-    process.stdout.write(report.text);
-  }
-  if (report.detail !== undefined) {
-    console.log("");
-    console.log(JSON.stringify(report.detail, null, 2));
-  }
-  if (report.how_to_run && report.how_to_run.length > 0) {
-    console.log("");
-    console.log("how_to_run:");
-    for (const line of report.how_to_run) console.log(`  ${line}`);
-  }
-  if (report.see_also && report.see_also.length > 0) {
-    console.log(`see_also: ${report.see_also.map((t) => `explain ${t}`).join(", ")}`);
-  }
-  if (report.error) console.log(`config: ${report.error}`);
+export function printExplain(report: ExplainReport): void {
+  printJson(report);
 }
 
 function topicBase(
@@ -353,6 +346,6 @@ function suggestIndexNext(cwd: string | undefined, project: ExplainProjectSummar
     }
   }
   if (!project) return ["explain contract"];
-  if (project.has_prepare) return ["explain prepare"];
-  return ["explain verify"];
+  if (project.has_prepare) return ["prepare"];
+  return ["verify"];
 }
