@@ -1,0 +1,51 @@
+version: 1
+
+workflow:
+  - id: orient
+    kind: guidance
+    summary: Locate entry files for this repo
+    refs: ["docs/overview.md"]
+    skip_when: entry_file_known
+
+  - id: tests
+    kind: guidance
+    summary: Red → Green when behavior is in scope
+    skip_when: docs_only
+
+  - id: verify
+    kind: run
+    command: ["npx", "evolving", "verify"]
+
+  - id: docs
+    kind: guidance
+    summary: Update owning docs if a contract changed
+
+gates:
+  check:
+    - name: format:check
+      command: ["npm", "run", "format:check"]
+    - name: lint
+      command: ["npm", "run", "lint"]
+      showOutputOnSuccess: true
+    - name: type-check
+      command: ["npm", "run", "type-check"]
+
+  verify:
+    detect: git
+    suites:
+      lib:
+        paths: ["packages/lib/"]
+        command: ["npm", "run", "test:lib"]
+      app:
+        paths: ["packages/app/"]
+        command: ["npm", "run", "test:app"]
+      shared:
+        paths: ["packages/shared/"]
+        also: [lib, app]
+        command: ["npm", "run", "test:shared"]
+      deps:
+        paths: ["package.json", "package-lock.json"]
+        also: [lib, app]
+    always:
+      - name: test:e2e
+        command: ["npm", "run", "test:e2e"]

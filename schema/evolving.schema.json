@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/mengtaoxin/evolving/schema/evolving.schema.json",
+  "title": "evolving.yml",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "workflow", "gates"],
+  "properties": {
+    "version": { "const": 1 },
+    "workflow": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/workflowStep" }
+    },
+    "gates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["check", "verify"],
+      "properties": {
+        "check": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/gateCommand" }
+        },
+        "verify": { "$ref": "#/$defs/verifyGate" }
+      }
+    }
+  },
+  "$defs": {
+    "gateCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["command"],
+      "properties": {
+        "command": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "name": { "type": "string", "minLength": 1 },
+        "env": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "showOutputOnSuccess": { "type": "boolean" }
+      }
+    },
+    "workflowStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "kind": { "enum": ["guidance", "run"] },
+        "summary": { "type": "string" },
+        "refs": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "skip_when": { "type": "string", "minLength": 1 },
+        "command": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "env": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    },
+    "verifyGate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["detect", "suites"],
+      "properties": {
+        "detect": { "const": "git" },
+        "suites": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/verifySuite" }
+        },
+        "always": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/gateCommand" }
+        }
+      }
+    },
+    "verifySuite": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["paths"],
+      "anyOf": [
+        { "required": ["command"] },
+        { "required": ["also"] }
+      ],
+      "properties": {
+        "paths": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "command": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "also": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "env": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "name": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}
