@@ -1,6 +1,6 @@
 {
   "name": "@mengtaoxin/evolving",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Declarative change-finish workflow and serial prepare/check/verify runner driven by evolving.yml",
   "license": "MIT",
   "type": "module",
@@ -16,7 +16,8 @@
   },
   "files": [
     "dist",
-    "schema"
+    "schema",
+    "templates"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json && node -e \"require('node:fs').chmodSync('dist/cli.js', 0o755)\"",

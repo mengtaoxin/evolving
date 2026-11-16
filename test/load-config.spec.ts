@@ -11,7 +11,13 @@ describe("parseConfig", () => {
   it("loads the abstract fixture", () => {
     const config = parseConfig(parseYaml(readFileSync(fixturePath, "utf8")));
     expect(config.version).toBe(1);
-    expect(config.workflow.map((s) => s.id)).toEqual(["orient", "tests", "verify", "docs"]);
+    expect(config.workflow.map((s) => s.id)).toEqual([
+      "orient",
+      "tests",
+      "prepare",
+      "verify",
+      "docs",
+    ]);
     expect(config.gates.prepare?.map((s) => s.name)).toEqual(["format", "lint:fix"]);
     expect(config.gates.check.map((s) => s.name)).toEqual([
       "format:check",

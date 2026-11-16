@@ -1,34 +1,67 @@
-import type { EvolvingConfig, GateCommand } from "./types.ts";
+import type { EvolvingConfig, GateCommand, RunOptions, RunReport } from "./types.ts";
 import {
   changedPathsFromGit,
   invalidSuiteArgs,
   resolveSuiteIds,
   suiteIdsFromConfig,
 } from "./detect.ts";
-import { createReporter, timestamp } from "./report.ts";
+import { emitRun } from "./emit.ts";
+import {
+  buildRunReport,
+  createReporter,
+  printRunSummary,
+  timestamp,
+} from "./report.ts";
 import { createRunner, installSignalHandlers } from "./run.ts";
 
 export async function runVerify(
   cwd: string,
   config: EvolvingConfig,
   args: readonly string[],
-): Promise<number> {
+  options: RunOptions = {},
+): Promise<RunReport> {
+  const mode = options.mode ?? "human";
   const checkOnly = args.includes("--check");
   const suiteArgs = args.filter((arg) => !arg.startsWith("--"));
   const suiteIds = suiteIdsFromConfig(config.gates.verify);
   const invalid = invalidSuiteArgs(suiteArgs, suiteIds);
   if (invalid.length > 0) {
-    console.error(
-      `Unknown argument(s): ${invalid.join(", ")}. Expected ${[...suiteIds, "all"].join(", ")}, --check, --e2e.`,
+    const message = `Unknown argument(s): ${invalid.join(", ")}. Expected ${[...suiteIds, "all"].join(", ")}, --check, --e2e.`;
+    if (mode === "human") console.error(message);
+    return emitRun(
+      cwd,
+      buildRunReport({
+        command: "verify",
+        startedAt: Date.now(),
+        failed: ["args"],
+        steps: mode === "json"
+          ? [
+              {
+                name: "args",
+                ok: false,
+                code: 2,
+                seconds: 0,
+                output_preview: message,
+              },
+            ]
+          : [],
+        exitCode: 2,
+        verify: {
+          check_only: checkOnly,
+          changed_paths_count: 0,
+          selected_suites: [],
+          always: [],
+        },
+      }),
+      mode,
     );
-    return 2;
   }
 
   const stamp = timestamp(new Date());
   const startedAt = Date.now();
   const { children, runCommand } = createRunner(cwd);
   installSignalHandlers(children);
-  const { failed, report } = createReporter(stamp);
+  const { failed, steps, report } = createReporter(stamp, mode);
 
   for (const step of config.gates.check) {
     const result = await runCommand(step);
@@ -39,10 +72,15 @@ export async function runVerify(
     });
   }
 
+  let changedPathsCount = 0;
+  let selected: string[] = [];
+  const alwaysNames: string[] = [];
+
   if (!checkOnly) {
     const changed = changedPathsFromGit(cwd);
-    const selected = resolveSuiteIds(config.gates.verify, suiteArgs, changed);
-    if (selected.length === 0) {
+    changedPathsCount = changed.length;
+    selected = resolveSuiteIds(config.gates.verify, suiteArgs, changed);
+    if (selected.length === 0 && mode === "human") {
       if (suiteArgs.length > 0) {
         console.log("– tests: skipped (selected suite(s) matched none)");
       } else {
@@ -60,6 +98,7 @@ export async function runVerify(
       report(step.name ?? id, [await runCommand(step)]);
     }
     for (const step of config.gates.verify.always ?? []) {
+      alwaysNames.push(step.name ?? step.command.join(" "));
       const result = await runCommand(step);
       report(step.name ?? step.command.join(" "), [result], {
         showOutputOnSuccess: step.showOutputOnSuccess === true,
@@ -68,12 +107,19 @@ export async function runVerify(
     }
   }
 
-  const total = ((Date.now() - startedAt) / 1000).toFixed(1);
   const label = checkOnly ? "check" : "verify";
-  if (failed.length === 0) {
-    console.log(`✔ ${label} passed · ${total}s`);
-    return 0;
-  }
-  console.log(`✘ ${label} failed: ${failed.join(", ")} · ${total}s`);
-  return 1;
+  const runReport = buildRunReport({
+    command: "verify",
+    startedAt,
+    failed,
+    steps,
+    verify: {
+      check_only: checkOnly,
+      changed_paths_count: changedPathsCount,
+      selected_suites: selected,
+      always: alwaysNames,
+    },
+  });
+  if (mode === "human") printRunSummary(label, failed, runReport.seconds);
+  return emitRun(cwd, runReport, mode);
 }

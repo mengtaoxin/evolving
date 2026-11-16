@@ -72,3 +72,149 @@ export interface StepResult {
   /** True when spawn failed because the executable was not found (ENOENT). */
   missingExecutable?: boolean;
 }
+
+export type OutputMode = "human" | "json";
+
+export type RunOptions = { mode?: OutputMode };
+
+export type RunCommandName = "prepare" | "check" | "verify" | "finish";
+
+/** One gate/suite step as exposed to agents (--json / last-run). */
+export interface ReportStep {
+  name: string;
+  ok: boolean;
+  code: number;
+  seconds: number;
+  fix?: readonly string[];
+  log?: string;
+  output_preview?: string;
+  missing_executable?: boolean;
+}
+
+export interface VerifyReportMeta {
+  check_only: boolean;
+  changed_paths_count: number;
+  selected_suites: readonly string[];
+  always: readonly string[];
+}
+
+export interface RunReport {
+  evolving: 1;
+  command: RunCommandName;
+  ok: boolean;
+  exit_code: number;
+  seconds: number;
+  steps: readonly ReportStep[];
+  failed: readonly string[];
+  verify?: VerifyReportMeta;
+  finished_at?: string;
+  cwd?: string;
+}
+
+export interface AgentContract {
+  order: readonly ["prepare", "verify"];
+  prepare_writes: true;
+  check_verify_readonly: true;
+  finish_runs: "workflow.kind=run only";
+  guidance: "agent-evaluated; CLI does not execute";
+  do_not_hand_edit_when_fix_exists: true;
+  skip_when_vocabulary: readonly string[];
+}
+
+export interface GateCommandView {
+  name?: string;
+  command: readonly string[];
+  fix?: readonly string[];
+  onMissing?: "warn";
+  showOutputOnSuccess?: boolean;
+}
+
+export interface WorkflowStepView {
+  id: string;
+  kind: "guidance" | "run";
+  summary?: string;
+  refs?: readonly string[];
+  skip_when?: string;
+  command?: readonly string[];
+}
+
+export interface WorkflowView {
+  evolving: 1;
+  command: "workflow";
+  contract: AgentContract;
+  workflow: readonly WorkflowStepView[];
+  gates: {
+    prepare: readonly GateCommandView[];
+    check: readonly GateCommandView[];
+    verify: {
+      detect: "git";
+      suites: Readonly<
+        Record<
+          string,
+          {
+            paths: readonly string[];
+            command?: readonly string[];
+            also?: readonly string[];
+            name?: string;
+          }
+        >
+      >;
+      always: readonly GateCommandView[];
+    };
+  };
+}
+
+export interface StatusReport {
+  evolving: 1;
+  command: "status";
+  state: "none" | "ok" | "failed";
+  ok: boolean | null;
+  last_run?: RunReport;
+  next: readonly string[];
+}
+
+export type ExplainTopicId =
+  | "contract"
+  | "prepare"
+  | "check"
+  | "verify"
+  | "finish"
+  | "workflow"
+  | "status"
+  | "json"
+  | "guidance";
+
+export interface ExplainTopicRef {
+  id: ExplainTopicId;
+  summary: string;
+}
+
+/** Lightweight project snapshot for explain index (no gate argv dump). */
+export interface ExplainProjectSummary {
+  workflow_ids: readonly string[];
+  workflow_run_ids: readonly string[];
+  workflow_guidance_ids: readonly string[];
+  suite_ids: readonly string[];
+  has_prepare: boolean;
+  prepare_count: number;
+  check_count: number;
+  always_count: number;
+}
+
+export interface ExplainReport {
+  evolving: 1;
+  command: "explain";
+  topic: ExplainTopicId | "index";
+  summary: string;
+  ok: boolean;
+  exit_code: number;
+  contract: AgentContract;
+  topics?: readonly ExplainTopicRef[];
+  project?: ExplainProjectSummary | null;
+  detail?: unknown;
+  how_to_run?: readonly string[];
+  see_also?: readonly ExplainTopicId[];
+  next?: readonly string[];
+  error?: string;
+  text?: string;
+}

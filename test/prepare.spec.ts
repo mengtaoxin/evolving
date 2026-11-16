@@ -27,8 +27,8 @@ gates:
 `,
     );
     const config = loadConfig(dir);
-    const code = await runPrepare(dir, config);
-    expect(code).toBe(0);
+    const report = await runPrepare(dir, config);
+    expect(report.exit_code).toBe(0);
     expect(await import("node:fs").then((fs) => fs.readFileSync(join(dir, "prepared.txt"), "utf8"))).toBe(
       "ok",
     );
@@ -58,8 +58,8 @@ gates:
       lines.push(args.map(String).join(" "));
     };
     try {
-      const code = await runPrepare(dir, loadConfig(dir));
-      expect(code).toBe(0);
+      const report = await runPrepare(dir, loadConfig(dir));
+      expect(report.exit_code).toBe(0);
     } finally {
       console.log = original;
     }

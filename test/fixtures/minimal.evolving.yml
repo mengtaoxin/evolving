@@ -12,6 +12,10 @@ workflow:
     summary: Red → Green when behavior is in scope
     skip_when: docs_only
 
+  - id: prepare
+    kind: run
+    command: ["npx", "evolving", "prepare"]
+
   - id: verify
     kind: run
     command: ["npx", "evolving", "verify"]

@@ -70,7 +70,11 @@
           "type": "array",
           "items": { "type": "string", "minLength": 1 }
         },
-        "skip_when": { "type": "string", "minLength": 1 },
+        "skip_when": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Agent-evaluated skip hint; the CLI never evaluates it. Recommended tokens: entry_file_known, docs_only, no_behavior_change, already_verified. Free text is allowed."
+        },
         "command": {
           "type": "array",
           "minItems": 1,

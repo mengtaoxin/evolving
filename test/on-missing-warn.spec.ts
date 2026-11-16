@@ -35,8 +35,8 @@ async function captureCheck(dir: string): Promise<{ code: number; lines: string[
     lines.push(args.map(String).join(" "));
   };
   try {
-    const code = await runCheck(dir, loadConfig(dir));
-    return { code, lines };
+    const report = await runCheck(dir, loadConfig(dir));
+    return { code: report.exit_code, lines };
   } finally {
     console.log = originalLog;
   }

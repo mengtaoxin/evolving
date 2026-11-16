@@ -31,8 +31,8 @@ gates:
       lines.push(args.map(String).join(" "));
     };
     try {
-      const code = await runCheck(dir, loadConfig(dir));
-      expect(code).toBe(1);
+      const report = await runCheck(dir, loadConfig(dir));
+      expect(report.exit_code).toBe(1);
     } finally {
       console.log = originalLog;
     }
