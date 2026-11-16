@@ -12,6 +12,11 @@ export interface GateCommand {
    * check/verify; never executed by those commands (use `evolving prepare`).
    */
   fix?: readonly string[];
+  /**
+   * When the executable is not on PATH (`spawn` ENOENT): `warn` prints a
+   * reminder and does not fail the gate. Other non-zero exits still fail.
+   */
+  onMissing?: "warn";
 }
 
 export interface WorkflowStep {
@@ -64,4 +69,6 @@ export interface StepResult {
   code: number;
   output: string;
   seconds: number;
+  /** True when spawn failed because the executable was not found (ENOENT). */
+  missingExecutable?: boolean;
 }

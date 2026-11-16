@@ -20,6 +20,7 @@ export async function runPrepare(cwd: string, config: EvolvingConfig): Promise<n
     const result = await runCommand(step);
     report(step.name ?? step.command.join(" "), [result], {
       showOutputOnSuccess: step.showOutputOnSuccess === true,
+      onMissing: step.onMissing,
     });
   }
 

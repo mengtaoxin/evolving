@@ -35,6 +35,7 @@ export async function runVerify(
     report(step.name ?? step.command.join(" "), [result], {
       showOutputOnSuccess: step.showOutputOnSuccess === true,
       fix: step.fix,
+      onMissing: step.onMissing,
     });
   }
 
@@ -62,6 +63,7 @@ export async function runVerify(
       const result = await runCommand(step);
       report(step.name ?? step.command.join(" "), [result], {
         showOutputOnSuccess: step.showOutputOnSuccess === true,
+        onMissing: step.onMissing,
       });
     }
   }

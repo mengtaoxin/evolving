@@ -14,7 +14,11 @@ export function createReporter(stamp: string): {
   report: (
     label: string,
     results: StepResult[],
-    options?: { showOutputOnSuccess?: boolean; fix?: readonly string[] },
+    options?: {
+      showOutputOnSuccess?: boolean;
+      fix?: readonly string[];
+      onMissing?: "warn";
+    },
   ) => void;
 } {
   const failed: string[] = [];
@@ -36,12 +40,35 @@ export function createReporter(stamp: string): {
     {
       showOutputOnSuccess = false,
       fix,
-    }: { showOutputOnSuccess?: boolean; fix?: readonly string[] } = {},
+      onMissing,
+    }: {
+      showOutputOnSuccess?: boolean;
+      fix?: readonly string[];
+      onMissing?: "warn";
+    } = {},
   ): void {
     const seconds = Math.max(0, ...results.map((r) => r.seconds)).toFixed(1);
-    const bad = results.filter((r) => r.code !== 0);
+    const warnedMissing =
+      onMissing === "warn" ? results.filter((r) => r.missingExecutable === true) : [];
+    const bad = results.filter(
+      (r) => r.code !== 0 && !(onMissing === "warn" && r.missingExecutable === true),
+    );
     const noisy = showOutputOnSuccess ? results.filter((r) => r.code === 0 && r.output) : [];
-    if (bad.length === 0) console.log(`✔ ${label} · ${seconds}s`);
+
+    if (bad.length === 0 && warnedMissing.length === 0) {
+      console.log(`✔ ${label} · ${seconds}s`);
+    } else if (bad.length === 0 && warnedMissing.length > 0) {
+      console.log(`⚠ ${label} · ${seconds}s`);
+    }
+
+    for (const result of warnedMissing) {
+      const exe = result.name === label ? result.name : `${label} / ${result.name}`;
+      console.log(
+        `  warn: ${exe} not installed (missing executable); install it to enable this check`,
+      );
+      if (result.output) printOutput(result);
+    }
+
     for (const result of noisy) {
       console.log(`  ${result.name} warnings:`);
       printOutput(result);

@@ -54,6 +54,10 @@ gates:
     - name: lint
       command: ["npm", "run", "lint"]
       fix: ["npm", "run", "lint:fix"]
+    # optional host binary: missing → warn; findings → fail
+    - name: gitleaks
+      command: ["gitleaks", "detect", "--source", "."]
+      onMissing: warn
   verify:
     detect: git
     suites:
@@ -70,6 +74,7 @@ Suite ids, paths, and commands are entirely yours. A suite may omit `command` wh
 
 - `gates.prepare` — write-allowed; optional (defaults to `[]`).
 - `fix` on a check step — printed as `fix: …` when that step fails under `check` / `verify`; not executed there. Prefer `evolving prepare` (or the printed argv) over hand edits.
+- `onMissing: warn` on a gate command — if the executable is not on PATH (`spawn` ENOENT), print a warn and continue; real non-zero exits from an installed tool still fail. Useful for optional host tools (e.g. gitleaks, lychee).
 
 ## Design notes
 

@@ -3,6 +3,15 @@ import type { GateCommand, StepResult } from "./types.ts";
 
 export type ChildHandle = ReturnType<typeof spawn>;
 
+function isMissingExecutable(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "code" in err &&
+    (err as { code?: unknown }).code === "ENOENT"
+  );
+}
+
 export function createRunner(cwd: string): {
   children: Set<ChildHandle>;
   runCommand: (step: GateCommand) => Promise<StepResult>;
@@ -22,6 +31,7 @@ export function createRunner(cwd: string): {
     const name = step.name ?? step.command.join(" ");
     const started = Date.now();
     return new Promise((done) => {
+      let settled = false;
       const child = spawn(executable, args, {
         cwd,
         env: { ...process.env, ...step.env, NO_COLOR: "1", FORCE_COLOR: "0" },
@@ -35,13 +45,21 @@ export function createRunner(cwd: string): {
           output += chunk;
         });
       }
-      const finish = (code: number) => {
+      const finish = (code: number, missingExecutable = false) => {
+        if (settled) return;
+        settled = true;
         children.delete(child);
-        done({ name, code, output: output.trim(), seconds: (Date.now() - started) / 1000 });
+        done({
+          name,
+          code,
+          output: output.trim(),
+          seconds: (Date.now() - started) / 1000,
+          ...(missingExecutable ? { missingExecutable: true } : {}),
+        });
       };
       child.on("error", (err) => {
         output += `\n[evolving] failed to start ${executable}: ${err.message}`;
-        finish(1);
+        finish(1, isMissingExecutable(err));
       });
       child.on("close", (code) => finish(code ?? 1));
     });

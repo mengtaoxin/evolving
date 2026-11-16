@@ -126,6 +126,12 @@ function parseGateCommand(raw: unknown, label: string): GateCommand {
   if (obj.fix !== undefined) {
     cmd.fix = requireCommand(obj.fix, `${label}.fix`);
   }
+  if (obj.onMissing !== undefined) {
+    if (obj.onMissing !== "warn") {
+      throw new Error(`${label}.onMissing must be "warn"`);
+    }
+    cmd.onMissing = "warn";
+  }
   return cmd;
 }
 

@@ -14,6 +14,7 @@ export async function runCheck(cwd: string, config: EvolvingConfig): Promise<num
     report(step.name ?? step.command.join(" "), [result], {
       showOutputOnSuccess: step.showOutputOnSuccess === true,
       fix: step.fix,
+      onMissing: step.onMissing,
     });
   }
 
