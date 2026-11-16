@@ -1,4 +1,6 @@
-import { writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { logsDir } from "./last-run.ts";
 import type {
   FailureSummary,
   ReportStep,
@@ -9,6 +11,8 @@ import type {
 } from "./types.ts";
 
 const MAX_PRINTED_LINES = 40;
+/** Cap on-disk step logs so a runaway suite cannot fill the repo. */
+export const MAX_LOG_BYTES = 2 * 1024 * 1024;
 const ERROR_LINE_RE = /Error|FAIL|error:|✘/i;
 
 export function timestamp(date: Date): string {
@@ -17,7 +21,10 @@ export function timestamp(date: Date): string {
   return `${day}-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
 }
 
-/** Prefer error window or tail when output is long; head only if short enough. */
+/**
+ * Compact window for agents: prefer an Error/FAIL neighborhood; otherwise the
+ * last N lines. Evolving chooses this slice — agents must not shell-truncate.
+ */
 export function outputPreview(output: string, maxLines = MAX_PRINTED_LINES): string {
   const lines = output.split("\n");
   if (lines.length <= maxLines) return output;
@@ -40,11 +47,30 @@ export function outputPreview(output: string, maxLines = MAX_PRINTED_LINES): str
   return `… ${start} earlier lines\n${lines.slice(start).join("\n")}`;
 }
 
-function logPathFor(name: string, stamp: string): string {
-  return `/tmp/evolving-${name.replace(/[^\w-]+/g, "-")}-${stamp}.log`;
+export function sanitizeLogName(name: string): string {
+  return name.replace(/[^\w-]+/g, "-");
 }
 
-export function createReporter(stamp: string): {
+export function stepLogPath(cwd: string, name: string, stamp: string): string {
+  return join(logsDir(cwd), `${stamp}-${sanitizeLogName(name)}.log`);
+}
+
+/** Write step output under .evolving/logs/; truncate with a marker when over cap. */
+export function writeStepLog(cwd: string, name: string, stamp: string, output: string): string {
+  const dir = logsDir(cwd);
+  mkdirSync(dir, { recursive: true });
+  const path = stepLogPath(cwd, name, stamp);
+  const body = output.length > MAX_LOG_BYTES
+    ? `${output.slice(0, MAX_LOG_BYTES)}\n\n[evolving] log truncated at ${MAX_LOG_BYTES} bytes; original length ${output.length}\n`
+    : `${output}\n`;
+  writeFileSync(path, body);
+  return path;
+}
+
+export function createReporter(
+  cwd: string,
+  stamp: string,
+): {
   failed: string[];
   steps: ReportStep[];
   report: (
@@ -59,12 +85,6 @@ export function createReporter(stamp: string): {
 } {
   const failed: string[] = [];
   const steps: ReportStep[] = [];
-
-  function writeLog(result: StepResult): string {
-    const log = logPathFor(result.name, stamp);
-    writeFileSync(log, `${result.output}\n`);
-    return log;
-  }
 
   function report(
     _label: string,
@@ -82,21 +102,17 @@ export function createReporter(stamp: string): {
     for (const result of results) {
       const isMissingWarn = onMissing === "warn" && result.missingExecutable === true;
       const isBad = result.code !== 0 && !isMissingWarn;
-      const shouldCapture =
-        isBad ||
-        isMissingWarn ||
-        (showOutputOnSuccess && result.code === 0 && !!result.output);
-      const log = shouldCapture ? writeLog(result) : undefined;
+      const log = writeStepLog(cwd, result.name, stamp, result.output);
       const attachPreview =
-        result.output &&
+        !!result.output &&
         (isBad || isMissingWarn || (showOutputOnSuccess && result.code === 0));
       const step: ReportStep = {
         name: result.name,
         ok: !isBad,
         code: result.code,
         seconds: result.seconds,
+        log,
         ...(fix && isBad ? { fix: [...fix] } : {}),
-        ...(log ? { log } : {}),
         ...(attachPreview ? { output_preview: outputPreview(result.output) } : {}),
         ...(result.missingExecutable ? { missing_executable: true } : {}),
       };
@@ -149,7 +165,7 @@ export function buildRunReport(input: {
   };
 }
 
-/** Compact stdout view for successful runs (disk keeps full report). */
+/** Compact stdout view for successful runs (disk keeps full report + step logs). */
 export function slimSuccessReport(report: RunReport): Record<string, unknown> {
   return {
     evolving: report.evolving,

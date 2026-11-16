@@ -30,13 +30,20 @@ describe("explain", () => {
     expect(report.topics?.map((t) => t.id)).toEqual(EXPLAIN_TOPICS.map((t) => t.id));
     expect(JSON.stringify(report)).not.toContain("npm run format");
     expect(report.next).toEqual(["explain contract"]);
+    expect(report.summary).toMatch(/quiet JSON/i);
+    expect(report.summary).toMatch(/Never pipe/i);
     expect(report.detail).toMatchObject({
       minimal_loop: ["evolving prepare", "evolving verify"],
       on_failure: "evolving status",
+      never_pipe: true,
     });
+    expect(String((report.detail as { on_truncated_view?: string }).on_truncated_view)).toMatch(
+      /status --full/i,
+    );
     expect(report.how_to_run?.join(" ")).not.toMatch(/\|/);
     expect(report.how_to_run?.join(" ")).not.toContain("--json");
   });
+
 
   it("index with fixture summarizes project without dumping gate argv", () => {
     const config = loadFixture();
@@ -81,7 +88,9 @@ describe("explain", () => {
     expect((report.detail as { contract: unknown }).contract).toEqual(AGENT_CONTRACT);
     const detail = report.detail as { do: string[]; do_not: string[] };
     expect(detail.do.length).toBeGreaterThan(0);
-    expect(detail.do_not.some((line) => /head|tail|tee/i.test(line))).toBe(true);
+    expect(detail.do_not.some((line) => /^Never pipe/i.test(line))).toBe(true);
+    expect(detail.do_not.some((line) => /second-truncate/i.test(line))).toBe(true);
+    expect(detail.do.some((line) => /status --full/i.test(line))).toBe(true);
   });
 
   it("explain json documents anti-patterns and failure fields", () => {
@@ -90,13 +99,31 @@ describe("explain", () => {
       do: string[];
       do_not: string[];
       run_report_fields: string[];
+      output_preview: string;
+      step_log: string;
     };
-    expect(detail.do_not.some((line) => /head|tail|tee/i.test(line))).toBe(true);
+    expect(detail.do_not.some((line) => /^Never pipe/i.test(line))).toBe(true);
     expect(detail.run_report_fields).toEqual(
       expect.arrayContaining(["failure", "last_run_path", "output_preview"]),
     );
+    expect(detail.output_preview).toMatch(/Evolving-chosen window/i);
+    expect(detail.output_preview).not.toMatch(/\btail\b/i);
+    expect(detail.step_log).toMatch(/\.evolving\/logs\//);
     expect(report.how_to_run?.join(" ")).not.toMatch(/\|/);
     expect(report.how_to_run?.join(" ")).not.toContain("--json");
-    expect(report.summary).toMatch(/always one JSON object/i);
+    expect(report.summary).toMatch(/quiet JSON object/i);
+  });
+
+  it("explain status documents truncated-view recovery", () => {
+    const report = buildExplainTopic("status", null);
+    const detail = report.detail as {
+      logs_dir: string;
+      on_truncated_view: string;
+    };
+    expect(detail.logs_dir).toBe(".evolving/logs/");
+    expect(detail.on_truncated_view).toMatch(/status --full/i);
+    expect(detail.on_truncated_view).toMatch(/never/i);
+    expect(report.summary).toMatch(/truncated/i);
   });
 });
+

@@ -40,7 +40,7 @@ export { runVerify } from "./verify.ts";
 export { runFinish } from "./finish.ts";
 export { buildWorkflowView, printWorkflow } from "./workflow.ts";
 export { buildStatus, printStatus } from "./status.ts";
-export { lastRunPath, readLastRun, writeLastRun } from "./last-run.ts";
+export { lastRunDir, lastRunPath, logsDir, readLastRun, writeLastRun } from "./last-run.ts";
 export {
   EXPLAIN_TOPICS,
   buildExplainIndex,

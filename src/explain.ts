@@ -28,8 +28,8 @@ export const EXPLAIN_TOPICS: readonly ExplainTopicRef[] = [
   { id: "verify", summary: "check + git-selected suites + always" },
   { id: "finish", summary: "Run workflow kind:run steps only" },
   { id: "workflow", summary: "This repo checklist (guidance + run)" },
-  { id: "status", summary: "Resume from .evolving/last-run.json" },
-  { id: "json", summary: "RunReport / JSON stdout shape for agents" },
+  { id: "status", summary: "Resume / recover truncated view from .evolving/last-run.json + logs" },
+  { id: "json", summary: "Quiet JSON stdout; full step text under .evolving/logs/" },
   { id: "guidance", summary: "Agent-evaluated skip_when / guidance steps" },
 ];
 
@@ -51,7 +51,7 @@ export function buildExplainIndex(
     command: "explain",
     topic: "index",
     summary:
-      "evolving is a project-agnostic change-finish gate runner and checklist. It is not an agent runtime. Default loop: prepare then verify; drill a topic only when first using evolving or unclear.",
+      "evolving is a quiet JSON change-finish gate runner (not an agent runtime). Never pipe/head/tail/tee/less/jq its stdout — read the full JSON. Success is already slim; failures include output_preview; full step text is on step.log under .evolving/logs/. If your view truncated output, evolving status --full then Read the log — do not re-run to re-read. Default loop: prepare then verify.",
     ok: true,
     exit_code: 0,
     contract: AGENT_CONTRACT,
@@ -60,6 +60,8 @@ export function buildExplainIndex(
     detail: {
       minimal_loop: ["evolving prepare", "evolving verify"],
       on_failure: "evolving status",
+      on_truncated_view: "evolving status --full, then Read step.log — never re-run only to re-read",
+      never_pipe: true,
       drill_when: "first time using evolving, or when a specific topic is unclear",
     },
     next,
@@ -177,12 +179,16 @@ export function buildExplainTopic(
       });
     case "status":
       return topicBase(topic, {
-        summary: "Reads .evolving/last-run.json and suggests next after a failed or interrupted run.",
+        summary:
+          "Reads .evolving/last-run.json and suggests next. Also the recovery path when the agent view truncated a long run — do not re-run only to re-read output.",
         detail: {
           path: ".evolving/last-run.json",
+          logs_dir: ".evolving/logs/",
           states: ["none", "ok", "failed"],
           default_json: "slim: state, failed, failure, last_run_path, next (no embedded last_run)",
-          full: "status --full embeds last_run",
+          full: "status --full embeds last_run (each step.log points at .evolving/logs/)",
+          on_truncated_view:
+            "evolving status --full, then Read step.log — never head/tail evolving or re-run to re-read",
           always_next:
             "If gates.verify.always failed, next is full verify (not selected_suites replay)",
         },
@@ -192,7 +198,7 @@ export function buildExplainTopic(
     case "json":
       return topicBase(topic, {
         summary:
-          "stdout is always one JSON object; full logs stay in step.log.",
+          "stdout is always one quiet JSON object. Never pipe or second-truncate it. Full step text is under .evolving/logs/ (step.log on every step).",
         detail: {
           ...AGENT_IO_DETAIL,
           run_report_fields: [
@@ -211,8 +217,11 @@ export function buildExplainTopic(
             "output_preview",
           ],
           output_preview:
-            "Enough to locate the error (tail or Error/FAIL window). Read step.log for full text.",
-          success_json: "Compressed: ok, seconds, counts, last_run_path; failure[] empty",
+            "Evolving-chosen window (Error/FAIL neighborhood, else last N lines) so you can locate the failure. Read step.log for the full text — do not shell-truncate.",
+          step_log:
+            "Every step writes .evolving/logs/<stamp>-<name>.log; path is always on step.log (success and failure).",
+          success_json:
+            "Compressed: ok, seconds, counts, last_run_path; failure[] empty. Disk keeps full last-run + logs.",
           explain_fields: [
             "topic",
             "summary",

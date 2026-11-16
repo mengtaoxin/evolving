@@ -18,7 +18,7 @@ export async function runPrepare(cwd: string, config: EvolvingConfig): Promise<R
 
   const { children, runCommand } = createRunner(cwd);
   installSignalHandlers(children);
-  const { failed, steps: reported, report } = createReporter(stamp);
+  const { failed, steps: reported, report } = createReporter(cwd, stamp);
 
   for (const step of steps) {
     const result = await runCommand(step);

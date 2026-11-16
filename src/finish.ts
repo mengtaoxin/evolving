@@ -9,7 +9,7 @@ export async function runFinish(cwd: string, config: EvolvingConfig): Promise<Ru
   const startedAt = Date.now();
   const { children, runCommand } = createRunner(cwd);
   installSignalHandlers(children);
-  const { failed, steps, report } = createReporter(stamp);
+  const { failed, steps, report } = createReporter(cwd, stamp);
 
   const runs = config.workflow.filter((step) => step.kind === "run");
   for (const step of runs) {

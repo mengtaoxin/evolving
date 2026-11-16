@@ -10,15 +10,17 @@ export const SKIP_WHEN_VOCABULARY = [
 
 /** Hard anti-patterns for consuming evolving JSON (explain json / contract). */
 export const AGENT_IO_DO_NOT = [
-  "Do not pipe evolving through head / tail / less to skim results",
-  "Do not truncate evolving stdout with shell pipes for reading",
-  "Do not tee evolving output just to capture the result JSON",
+  "Never pipe evolving through head / tail / less / jq to skim results",
+  "Never truncate evolving stdout with shell pipes for reading",
+  "Never tee evolving output just to capture the result JSON",
+  "Never re-run a long gate only because the agent view truncated stdout — recover via status + step.log",
+  "Evolving already compresses success and previews failures — you must not second-truncate",
 ] as const;
 
 export const AGENT_IO_DO = [
-  "Read the full stdout JSON object from evolving",
-  "On failure, run evolving status (or status --full)",
-  "Use step output_preview to locate the error; read step.log for the full text",
+  "Read the full stdout JSON object from evolving (no pipes)",
+  "On failure, use failure[] / output_preview to locate the error; Read step.log for the full text",
+  "If the agent view truncated stdout: evolving status (or status --full), then Read step.log — do not re-run to re-read",
 ] as const;
 
 export const AGENT_CONTRACT: AgentContract = {
@@ -37,13 +39,14 @@ export function agentContractText(): string {
 =======================
 0. Start with: evolving explain. If you already know the loop, run prepare then verify.
 1. After editing code, run: evolving prepare, then evolving verify.
-2. stdout is always one JSON object.
+2. stdout is always one quiet JSON object. Never head/tail/tee/less/jq-pipe it.
 3. Guidance workflow steps are for the agent; the CLI never executes them.
 4. evolving finish runs only workflow steps with kind: run (skips guidance).
    Put prepare and verify as kind: run so finish matches prepare → verify.
 5. Do not hand-edit formatting/lint when gates.prepare or a check fix companion exists.
 6. On failure, read failure[] / fix / log from the JSON report (or evolving status), then retry.
-7. Do not head/tail/tee evolving stdout. Read the full JSON; details live in step.log.
+7. Full step output lives under .evolving/logs/ (path on each step.log). If your view
+   truncated the JSON, run evolving status --full and Read the log — do not re-run to re-read.
 8. skip_when is agent-evaluated. Recommended tokens: ${SKIP_WHEN_VOCABULARY.join(", ")}.
 
 do:

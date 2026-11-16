@@ -12,13 +12,16 @@ describe("agent contract", () => {
     expect(text).toContain("evolving explain");
     expect(text).toContain("evolving prepare");
     expect(text).toContain("evolving verify");
-    expect(text).toContain("always one JSON object");
+    expect(text).toMatch(/quiet JSON object/i);
     expect(text).not.toContain("--json");
     expect(text).toContain("kind: run");
     expect(text).toContain("do_not:");
-    expect(text).toMatch(/head|tail|tee/i);
+    expect(text).toMatch(/Never head\/tail\/tee/i);
+    expect(text).toContain(".evolving/logs/");
+    expect(text).toMatch(/do not re-run to re-read/i);
     for (const token of SKIP_WHEN_VOCABULARY) {
       expect(text).toContain(token);
     }
   });
 });
+

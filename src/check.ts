@@ -8,7 +8,7 @@ export async function runCheck(cwd: string, config: EvolvingConfig): Promise<Run
   const startedAt = Date.now();
   const { children, runCommand } = createRunner(cwd);
   installSignalHandlers(children);
-  const { failed, steps, report } = createReporter(stamp);
+  const { failed, steps, report } = createReporter(cwd, stamp);
 
   for (const step of config.gates.check) {
     const result = await runCommand(step);

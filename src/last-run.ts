@@ -10,6 +10,11 @@ export function lastRunPath(cwd: string): string {
   return join(lastRunDir(cwd), "last-run.json");
 }
 
+/** Directory for full per-step stdout/stderr logs (survive beyond /tmp). */
+export function logsDir(cwd: string): string {
+  return join(lastRunDir(cwd), "logs");
+}
+
 /** Persist the latest prepare/check/verify/finish report for agent resume. */
 export function writeLastRun(cwd: string, report: RunReport): RunReport {
   const path = lastRunPath(cwd);

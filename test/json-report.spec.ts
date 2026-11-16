@@ -1,11 +1,11 @@
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runCheck } from "../src/check.ts";
-import { lastRunPath } from "../src/last-run.ts";
+import { lastRunPath, logsDir } from "../src/last-run.ts";
 import { loadConfig } from "../src/load-config.ts";
 import { runPrepare } from "../src/prepare.ts";
-import { outputPreview } from "../src/report.ts";
+import { MAX_LOG_BYTES, outputPreview, writeStepLog } from "../src/report.ts";
 import { buildStatus } from "../src/status.ts";
 
 function writeMinimal(dir: string, checkYaml: string, prepareYaml = ""): void {
@@ -32,7 +32,7 @@ ${checkYaml}
 }
 
 describe("json RunReport", () => {
-  it("returns structured JSON fields and writes last-run on prepare", async () => {
+  it("returns structured JSON fields and writes last-run + success log on prepare", async () => {
     const dir = mkdtempSync(join(tmpdir(), "evolving-json-prepare-"));
     writeMinimal(
       dir,
@@ -59,6 +59,9 @@ describe("json RunReport", () => {
     expect(report.ok).toBe(true);
     expect(report.exit_code).toBe(0);
     expect(report.steps[0]?.name).toBe("touch");
+    expect(report.steps[0]?.log?.startsWith(logsDir(dir) + "/")).toBe(true);
+    expect(report.steps[0]?.log?.endsWith("-touch.log")).toBe(true);
+    expect(existsSync(report.steps[0]!.log!)).toBe(true);
     expect(report.last_run_path).toBe(lastRunPath(dir));
     expect(report.failure).toEqual([]);
     expect(lines).toHaveLength(1);
@@ -72,10 +75,11 @@ describe("json RunReport", () => {
     expect(saved.finished_at).toBeTruthy();
     expect(saved.cwd).toBe(dir);
     expect(saved.steps[0]?.name).toBe("touch");
+    expect(saved.steps[0]?.log).toBe(report.steps[0]?.log);
     expect(saved.last_run_path).toBe(lastRunPath(dir));
   });
 
-  it("includes fix on failed check steps", async () => {
+  it("includes fix and .evolving/logs path on failed check steps", async () => {
     const dir = mkdtempSync(join(tmpdir(), "evolving-json-fix-"));
     writeMinimal(
       dir,
@@ -99,10 +103,13 @@ describe("json RunReport", () => {
     expect(report.failed).toContain("format:check");
     expect(report.failure[0]?.name).toBe("format:check");
     expect(report.failure[0]?.fix).toEqual(["npm", "run", "format"]);
-    expect(report.failure[0]?.log).toMatch(/\/tmp\/evolving-format-check-/);
+    expect(report.failure[0]?.log?.startsWith(logsDir(dir) + "/")).toBe(true);
+    expect(report.failure[0]?.log?.endsWith("-format-check.log")).toBe(true);
+    expect(existsSync(report.failure[0]!.log!)).toBe(true);
+    expect(readFileSync(report.failure[0]!.log!, "utf8")).toContain("Error: boom");
     expect(report.last_run_path).toBe(lastRunPath(dir));
     expect(report.steps[0]?.fix).toEqual(["npm", "run", "format"]);
-    expect(report.steps[0]?.log).toMatch(/\/tmp\/evolving-format-check-/);
+    expect(report.steps[0]?.log).toBe(report.failure[0]?.log);
     expect(report.steps[0]?.output_preview).toMatch(/Error/);
 
     const printed = JSON.parse(lines[0] as string);
@@ -114,9 +121,10 @@ describe("json RunReport", () => {
     expect(status.next[0]).toBe("prepare");
     expect(status.last_run).toBeUndefined();
     expect(status.failure?.[0]?.name).toBe("format:check");
+    expect(status.failure?.[0]?.log).toBe(report.failure[0]?.log);
   });
 
-  it("outputPreview prefers Error window then tail", () => {
+  it("outputPreview prefers Error window then last N lines", () => {
     const noise = Array.from({ length: 60 }, (_, i) => `noise ${i}`);
     const withError = [...noise.slice(0, 50), "Error: real failure", ...noise.slice(50)].join(
       "\n",
@@ -126,9 +134,21 @@ describe("json RunReport", () => {
     expect(preview).toMatch(/earlier lines|more lines/);
 
     const noError = noise.join("\n");
-    const tail = outputPreview(noError, 10);
-    expect(tail).toContain("noise 59");
-    expect(tail).toContain("earlier lines");
-    expect(tail).not.toContain("noise 0");
+    const endWindow = outputPreview(noError, 10);
+    expect(endWindow).toContain("noise 59");
+    expect(endWindow).toContain("earlier lines");
+    expect(endWindow).not.toContain("noise 0");
+  });
+
+  it("writeStepLog truncates oversized output with a marker", () => {
+    const dir = mkdtempSync(join(tmpdir(), "evolving-log-cap-"));
+    const huge = "x".repeat(MAX_LOG_BYTES + 50_000);
+    const path = writeStepLog(dir, "big", "20260101-000000", huge);
+    const body = readFileSync(path, "utf8");
+    expect(body.slice(0, MAX_LOG_BYTES)).toBe(huge.slice(0, MAX_LOG_BYTES));
+    expect(body).toContain("[evolving] log truncated");
+    expect(body).toContain(String(MAX_LOG_BYTES));
+    expect(body.length).toBeLessThan(huge.length);
   });
 });
+

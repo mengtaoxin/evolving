@@ -4,7 +4,7 @@ Project-agnostic change-finish workflow and serial **prepare** / **check** / **v
 
 Put an `evolving.yml` at the repo root. The CLI loads that file and `spawn`s the commands you declare. Formatters, linters, and test runners stay in the consumer repo.
 
-Designed for **agents first**: progressive `explain`, JSON stdout by default, a fixed `contract`, and `.evolving/last-run.json` for resume.
+Designed for **agents first**: progressive `explain`, quiet JSON stdout by default, a fixed `contract`, `.evolving/last-run.json` for resume, and `.evolving/logs/` for full step output (recover truncated agent views without re-running).
 
 ## Install
 
@@ -103,6 +103,7 @@ Suite ids, paths, and commands are entirely yours. A suite may omit `command` wh
 - `fix` on a check step — included in JSON `failure[]` / step fields when that step fails under `check` / `verify`; not executed there. Prefer `evolving prepare` (or the printed argv) over hand edits.
 - `onMissing: warn` on a gate command — if the executable is not on PATH (`spawn` ENOENT), print a warn and continue; real non-zero exits from an installed tool still fail. Useful for optional host tools (e.g. gitleaks, lychee).
 - `.evolving/last-run.json` — written after prepare/check/verify/finish; safe to gitignore in consumer repos.
+- `.evolving/logs/` — full per-step stdout/stderr; every `step.log` points here (success and failure). If the agent view truncated output, use `evolving status --full` then Read the log — do not re-run only to re-read.
 
 ## Design notes
 
