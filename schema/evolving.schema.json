@@ -4,28 +4,24 @@
   "title": "evolving.yml",
   "type": "object",
   "additionalProperties": false,
-  "required": ["version", "workflow", "gates"],
+  "required": ["version", "after_edit", "stages"],
   "properties": {
-    "version": { "const": 1 },
-    "workflow": {
+    "version": { "const": 2 },
+    "after_edit": {
       "type": "array",
-      "items": { "$ref": "#/$defs/workflowStep" }
+      "const": ["prepare", "verify"],
+      "description": "Protocol after code edits; surfaced by evolving explain / contract. Downstream docs must not restate this."
     },
-    "gates": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["check", "verify"],
-      "properties": {
-        "prepare": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/gateCommand" },
-          "description": "Write-allowed steps (format / lint:fix). Run via evolving prepare; never by check/verify."
-        },
-        "check": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/gateCommand" }
-        },
-        "verify": { "$ref": "#/$defs/verifyGate" }
+    "stages": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "oneOf": [
+          { "$ref": "#/$defs/guidanceStage" },
+          { "$ref": "#/$defs/prepareStage" },
+          { "$ref": "#/$defs/verifyStage" },
+          { "$ref": "#/$defs/runStage" }
+        ]
       }
     }
   },
@@ -58,13 +54,13 @@
         }
       }
     },
-    "workflowStep": {
+    "guidanceStage": {
       "type": "object",
       "additionalProperties": false,
       "required": ["id", "kind"],
       "properties": {
         "id": { "type": "string", "minLength": 1 },
-        "kind": { "enum": ["guidance", "run"] },
+        "kind": { "const": "guidance" },
         "summary": { "type": "string" },
         "refs": {
           "type": "array",
@@ -74,23 +70,35 @@
           "type": "string",
           "minLength": 1,
           "description": "Agent-evaluated skip hint; the CLI never evaluates it. Recommended tokens: entry_file_known, docs_only, no_behavior_change, already_verified. Free text is allowed."
-        },
-        "command": {
-          "type": "array",
-          "minItems": 1,
-          "items": { "type": "string", "minLength": 1 }
-        },
-        "env": {
-          "type": "object",
-          "additionalProperties": { "type": "string" }
         }
       }
     },
-    "verifyGate": {
+    "prepareStage": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["detect", "suites"],
+      "required": ["id", "kind", "steps"],
       "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "kind": { "const": "prepare" },
+        "steps": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/gateCommand" },
+          "description": "Write-allowed steps (format / lint:fix). Run via evolving prepare; never by check/verify."
+        }
+      }
+    },
+    "verifyStage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "check", "detect", "suites"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "kind": { "const": "verify" },
+        "check": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/gateCommand" },
+          "description": "Static read-only gates; also the first phase of evolving verify (check ⊂ verify)."
+        },
         "detect": { "const": "git" },
         "suites": {
           "type": "object",
@@ -99,6 +107,24 @@
         "always": {
           "type": "array",
           "items": { "$ref": "#/$defs/gateCommand" }
+        }
+      }
+    },
+    "runStage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "command"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "kind": { "const": "run" },
+        "command": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "env": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
         }
       }
     },

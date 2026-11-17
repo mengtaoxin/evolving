@@ -3,27 +3,18 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runCheck } from "../src/check.ts";
 import { loadConfig } from "../src/load-config.ts";
+import { minimalV2Yaml } from "./helpers/v2-yaml.ts";
 
 describe("check fix hint", () => {
   it("includes the fix companion on failed check steps in JSON", async () => {
     const dir = mkdtempSync(join(tmpdir(), "evolving-check-fix-"));
     writeFileSync(
       join(dir, "evolving.yml"),
-      `
-version: 1
-workflow:
-  - id: verify
-    kind: run
-    command: ["true"]
-gates:
-  check:
-    - name: format:check
-      command: ["node", "-e", "process.exit(1)"]
-      fix: ["npm", "run", "format"]
-  verify:
-    detect: git
-    suites: {}
-`,
+      minimalV2Yaml({
+        checkYaml: `      - name: format:check
+        command: ["node", "-e", "process.exit(1)"]
+        fix: ["npm", "run", "format"]`,
+      }),
     );
     const originalLog = console.log;
     console.log = () => {};

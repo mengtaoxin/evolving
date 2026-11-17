@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { minimalV2Yaml } from "./helpers/v2-yaml.ts";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const cliPath = join(repoRoot, "dist/cli.js");
@@ -37,21 +38,10 @@ describe("cli json default", () => {
     const dir = mkdtempSync(join(tmpdir(), "evolving-cli-full-"));
     writeFileSync(
       join(dir, "evolving.yml"),
-      `
-version: 1
-workflow:
-  - id: verify
-    kind: run
-    command: ["true"]
-gates:
-  prepare: []
-  check:
-    - name: lint
-      command: ["node", "-e", "process.exit(1)"]
-  verify:
-    detect: git
-    suites: {}
-`,
+      minimalV2Yaml({
+        checkYaml: `      - name: lint
+        command: ["node", "-e", "process.exit(1)"]`,
+      }),
     );
     const check = runCli(["check"], dir);
     expect(check.status).toBe(1);

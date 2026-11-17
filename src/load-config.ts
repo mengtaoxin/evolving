@@ -1,7 +1,17 @@
 import { readFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import { parse as parseYaml } from "yaml";
-import type { EvolvingConfig, GateCommand, VerifySuite, WorkflowStep } from "./types.ts";
+import type {
+  AfterEditStep,
+  EvolvingConfig,
+  GateCommand,
+  GuidanceStage,
+  PrepareStage,
+  RunStage,
+  Stage,
+  VerifyStage,
+  VerifySuite,
+} from "./types.ts";
 
 const CONFIG_NAME = "evolving.yml";
 
@@ -24,69 +34,144 @@ export function loadConfig(cwd: string, explicitPath?: string): EvolvingConfig {
 
 export function parseConfig(raw: unknown, source = "evolving.yml"): EvolvingConfig {
   if (!isRecord(raw)) throw new Error(`${source}: root must be a mapping`);
-  if (raw.version !== 1) throw new Error(`${source}: version must be 1`);
-
-  const workflow = requireArray(raw.workflow, `${source}: workflow`);
-  const gates = requireRecord(raw.gates, `${source}: gates`);
-  const prepare =
-    gates.prepare === undefined
-      ? []
-      : requireArray(gates.prepare, `${source}: gates.prepare`).map((item, i) =>
-          parseGateCommand(item, `${source}: gates.prepare[${i}]`),
-        );
-  const check = requireArray(gates.check, `${source}: gates.check`).map((item, i) =>
-    parseGateCommand(item, `${source}: gates.check[${i}]`),
-  );
-  const verifyRaw = requireRecord(gates.verify, `${source}: gates.verify`);
-  if (verifyRaw.detect !== "git") {
-    throw new Error(`${source}: gates.verify.detect must be "git"`);
+  if (raw.version === 1) {
+    throw new Error(`${source}: version 1 is not supported; use version: 2 (stages + after_edit)`);
   }
-  const suitesRaw = requireRecord(verifyRaw.suites, `${source}: gates.verify.suites`);
-  const suites: Record<string, VerifySuite> = {};
-  for (const [id, value] of Object.entries(suitesRaw)) {
-    suites[id] = parseSuite(value, `${source}: gates.verify.suites.${id}`);
-  }
-  const always = verifyRaw.always === undefined
-    ? []
-    : requireArray(verifyRaw.always, `${source}: gates.verify.always`).map((item, i) =>
-        parseGateCommand(item, `${source}: gates.verify.always[${i}]`),
-      );
+  if (raw.version !== 2) throw new Error(`${source}: version must be 2`);
 
-  return {
-    version: 1,
-    workflow: workflow.map((item, i) => parseWorkflowStep(item, `${source}: workflow[${i}]`)),
-    gates: {
-      prepare,
-      check,
-      verify: { detect: "git", suites, always },
-    },
-  };
+  const after_edit = parseAfterEdit(raw.after_edit, `${source}: after_edit`);
+  const stagesRaw = requireArray(raw.stages, `${source}: stages`);
+  if (stagesRaw.length === 0) throw new Error(`${source}: stages must be non-empty`);
+
+  const stages = stagesRaw.map((item, i) => parseStage(item, `${source}: stages[${i}]`));
+  assertStageUniqueness(stages, source);
+
+  return { version: 2, after_edit, stages };
 }
 
-function parseWorkflowStep(raw: unknown, label: string): WorkflowStep {
+function parseAfterEdit(raw: unknown, label: string): readonly AfterEditStep[] {
+  const arr = requireArray(raw, label);
+  if (arr.length !== 2 || arr[0] !== "prepare" || arr[1] !== "verify") {
+    throw new Error(`${label} must be [prepare, verify]`);
+  }
+  return ["prepare", "verify"];
+}
+
+function assertStageUniqueness(stages: readonly Stage[], source: string): void {
+  const prepares = stages.filter((s) => s.kind === "prepare");
+  if (prepares.length > 1) {
+    throw new Error(`${source}: at most one kind: prepare stage allowed`);
+  }
+  const verifies = stages.filter((s) => s.kind === "verify");
+  if (verifies.length !== 1) {
+    throw new Error(`${source}: exactly one kind: verify stage is required`);
+  }
+  const ids = new Set<string>();
+  for (const stage of stages) {
+    if (ids.has(stage.id)) throw new Error(`${source}: duplicate stage id "${stage.id}"`);
+    ids.add(stage.id);
+  }
+}
+
+function parseStage(raw: unknown, label: string): Stage {
   const obj = requireRecord(raw, label);
   const id = requireString(obj.id, `${label}.id`);
   const kind = obj.kind;
-  if (kind !== "guidance" && kind !== "run") {
-    throw new Error(`${label}.kind must be "guidance" or "run"`);
-  }
-  const step: WorkflowStep = { id, kind };
-  if (obj.summary !== undefined) step.summary = requireString(obj.summary, `${label}.summary`);
+  if (kind === "guidance") return parseGuidanceStage(obj, id, label);
+  if (kind === "prepare") return parsePrepareStage(obj, id, label);
+  if (kind === "verify") return parseVerifyStage(obj, id, label);
+  if (kind === "run") return parseRunStage(obj, id, label);
+  throw new Error(`${label}.kind must be guidance, prepare, verify, or run`);
+}
+
+function parseGuidanceStage(
+  obj: Record<string, unknown>,
+  id: string,
+  label: string,
+): GuidanceStage {
+  forbidKeys(obj, label, ["command", "steps", "check", "detect", "suites", "always", "env"]);
+  const stage: GuidanceStage = { id, kind: "guidance" };
+  if (obj.summary !== undefined) stage.summary = requireString(obj.summary, `${label}.summary`);
   if (obj.skip_when !== undefined) {
-    step.skip_when = requireString(obj.skip_when, `${label}.skip_when`);
+    stage.skip_when = requireString(obj.skip_when, `${label}.skip_when`);
   }
   if (obj.refs !== undefined) {
-    step.refs = requireArray(obj.refs, `${label}.refs`).map((r, i) =>
+    stage.refs = requireArray(obj.refs, `${label}.refs`).map((r, i) =>
       requireString(r, `${label}.refs[${i}]`),
     );
   }
-  if (obj.env !== undefined) step.env = requireStringRecord(obj.env, `${label}.env`);
-  if (kind === "run") {
-    step.command = requireCommand(obj.command, `${label}.command`);
-  } else if (obj.command !== undefined) {
-    throw new Error(`${label}: guidance steps must not set command`);
+  return stage;
+}
+
+function parsePrepareStage(obj: Record<string, unknown>, id: string, label: string): PrepareStage {
+  forbidKeys(obj, label, [
+    "command",
+    "summary",
+    "refs",
+    "skip_when",
+    "check",
+    "detect",
+    "suites",
+    "always",
+  ]);
+  const steps = requireArray(obj.steps, `${label}.steps`).map((item, i) =>
+    parseGateCommand(item, `${label}.steps[${i}]`),
+  );
+  return { id, kind: "prepare", steps };
+}
+
+function parseVerifyStage(obj: Record<string, unknown>, id: string, label: string): VerifyStage {
+  forbidKeys(obj, label, ["command", "steps", "summary", "refs", "skip_when", "env"]);
+  if (obj.detect !== "git") {
+    throw new Error(`${label}.detect must be "git"`);
   }
-  return step;
+  const check = requireArray(obj.check, `${label}.check`).map((item, i) =>
+    parseGateCommand(item, `${label}.check[${i}]`),
+  );
+  const suitesRaw = requireRecord(obj.suites, `${label}.suites`);
+  const suites: Record<string, VerifySuite> = {};
+  for (const [suiteId, value] of Object.entries(suitesRaw)) {
+    suites[suiteId] = parseSuite(value, `${label}.suites.${suiteId}`);
+  }
+  const always =
+    obj.always === undefined
+      ? []
+      : requireArray(obj.always, `${label}.always`).map((item, i) =>
+          parseGateCommand(item, `${label}.always[${i}]`),
+        );
+  return { id, kind: "verify", check, detect: "git", suites, always };
+}
+
+function parseRunStage(obj: Record<string, unknown>, id: string, label: string): RunStage {
+  forbidKeys(obj, label, [
+    "steps",
+    "summary",
+    "refs",
+    "skip_when",
+    "check",
+    "detect",
+    "suites",
+    "always",
+  ]);
+  const stage: RunStage = {
+    id,
+    kind: "run",
+    command: requireCommand(obj.command, `${label}.command`),
+  };
+  if (obj.env !== undefined) stage.env = requireStringRecord(obj.env, `${label}.env`);
+  return stage;
+}
+
+function forbidKeys(
+  obj: Record<string, unknown>,
+  label: string,
+  keys: readonly string[],
+): void {
+  for (const key of keys) {
+    if (obj[key] !== undefined) {
+      throw new Error(`${label}: must not set ${key}`);
+    }
+  }
 }
 
 function parseSuite(raw: unknown, label: string): VerifySuite {

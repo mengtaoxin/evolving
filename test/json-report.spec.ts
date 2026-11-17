@@ -7,27 +7,15 @@ import { loadConfig } from "../src/load-config.ts";
 import { runPrepare } from "../src/prepare.ts";
 import { MAX_LOG_BYTES, outputPreview, writeStepLog } from "../src/report.ts";
 import { buildStatus } from "../src/status.ts";
+import { minimalV2Yaml } from "./helpers/v2-yaml.ts";
 
-function writeMinimal(dir: string, checkYaml: string, prepareYaml = ""): void {
+function writeMinimal(dir: string, checkYaml: string, prepareStepsYaml?: string): void {
   writeFileSync(
     join(dir, "evolving.yml"),
-    `
-version: 1
-workflow:
-  - id: prepare
-    kind: run
-    command: ["npx", "evolving", "prepare"]
-  - id: verify
-    kind: run
-    command: ["true"]
-gates:
-${prepareYaml}
-  check:
-${checkYaml}
-  verify:
-    detect: git
-    suites: {}
-`,
+    minimalV2Yaml({
+      checkYaml,
+      ...(prepareStepsYaml !== undefined ? { prepareStepsYaml } : {}),
+    }),
   );
 }
 
@@ -36,11 +24,10 @@ describe("json RunReport", () => {
     const dir = mkdtempSync(join(tmpdir(), "evolving-json-prepare-"));
     writeMinimal(
       dir,
-      `    - command: ["true"]
+      `      - command: ["true"]
 `,
-      `  prepare:
-    - name: touch
-      command: ["node", "-e", "require('node:fs').writeFileSync('ok.txt','1')"]
+      `      - name: touch
+        command: ["node", "-e", "require('node:fs').writeFileSync('ok.txt','1')"]
 `,
     );
     const lines: string[] = [];
@@ -83,9 +70,9 @@ describe("json RunReport", () => {
     const dir = mkdtempSync(join(tmpdir(), "evolving-json-fix-"));
     writeMinimal(
       dir,
-      `    - name: format:check
-      command: ["node", "-e", "console.error('Error: boom'); process.exit(1)"]
-      fix: ["npm", "run", "format"]
+      `      - name: format:check
+        command: ["node", "-e", "console.error('Error: boom'); process.exit(1)"]
+        fix: ["npm", "run", "format"]
 `,
     );
     const lines: string[] = [];
@@ -151,4 +138,3 @@ describe("json RunReport", () => {
     expect(body.length).toBeLessThan(huge.length);
   });
 });
-

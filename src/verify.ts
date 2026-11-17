@@ -8,6 +8,7 @@ import {
 import { emitRun } from "./emit.ts";
 import { buildRunReport, createReporter, timestamp } from "./report.ts";
 import { createRunner, installSignalHandlers } from "./run.ts";
+import { verifyStage } from "./stages-access.ts";
 
 export async function runVerify(
   cwd: string,
@@ -16,7 +17,8 @@ export async function runVerify(
 ): Promise<RunReport> {
   const checkOnly = args.includes("--check");
   const suiteArgs = args.filter((arg) => !arg.startsWith("--"));
-  const suiteIds = suiteIdsFromConfig(config.gates.verify);
+  const gate = verifyStage(config);
+  const suiteIds = suiteIdsFromConfig(gate);
   const invalid = invalidSuiteArgs(suiteArgs, suiteIds);
   if (invalid.length > 0) {
     const message = `Unknown argument(s): ${invalid.join(", ")}. Expected ${[...suiteIds, "all"].join(", ")}, --check, --e2e.`;
@@ -52,7 +54,7 @@ export async function runVerify(
   installSignalHandlers(children);
   const { failed, steps, report } = createReporter(cwd, stamp);
 
-  for (const step of config.gates.check) {
+  for (const step of gate.check) {
     const result = await runCommand(step);
     report(step.name ?? step.command.join(" "), [result], {
       showOutputOnSuccess: step.showOutputOnSuccess === true,
@@ -68,9 +70,9 @@ export async function runVerify(
   if (!checkOnly) {
     const changed = changedPathsFromGit(cwd);
     changedPathsCount = changed.length;
-    selected = resolveSuiteIds(config.gates.verify, suiteArgs, changed);
+    selected = resolveSuiteIds(gate, suiteArgs, changed);
     for (const id of selected) {
-      const suite = config.gates.verify.suites[id];
+      const suite = gate.suites[id];
       if (!suite?.command) continue;
       const step: GateCommand = {
         name: suite.name ?? id,
@@ -79,7 +81,7 @@ export async function runVerify(
       };
       report(step.name ?? id, [await runCommand(step)]);
     }
-    for (const step of config.gates.verify.always ?? []) {
+    for (const step of gate.always ?? []) {
       alwaysNames.push(step.name ?? step.command.join(" "));
       const result = await runCommand(step);
       report(step.name ?? step.command.join(" "), [result], {

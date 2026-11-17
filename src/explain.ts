@@ -1,11 +1,12 @@
 import {
-  AGENT_CONTRACT,
   AGENT_IO_DO,
   AGENT_IO_DO_NOT,
+  agentContractFor,
   agentContractText,
   SKIP_WHEN_VOCABULARY,
 } from "./contract.ts";
 import { printJson } from "./report.ts";
+import { checkSteps, prepareSteps, verifyStage } from "./stages-access.ts";
 import { buildStatus } from "./status.ts";
 import type {
   EvolvingConfig,
@@ -14,6 +15,7 @@ import type {
   ExplainTopicId,
   ExplainTopicRef,
   GateCommand,
+  StageView,
 } from "./types.ts";
 
 const AGENT_IO_DETAIL = {
@@ -22,15 +24,15 @@ const AGENT_IO_DETAIL = {
 } as const;
 
 export const EXPLAIN_TOPICS: readonly ExplainTopicRef[] = [
-  { id: "contract", summary: "Fixed agent protocol (order, guidance, finish)" },
-  { id: "prepare", summary: "Write-allowed gates (format / lint:fix)" },
-  { id: "check", summary: "Read-only static gates and fix companions" },
+  { id: "contract", summary: "Fixed agent protocol (after_edit, guidance, finish)" },
+  { id: "prepare", summary: "Write-allowed prepare stage (format / lint:fix)" },
+  { id: "check", summary: "verify.check subset — read-only static gates" },
   { id: "verify", summary: "check + git-selected suites + always" },
-  { id: "finish", summary: "Run workflow kind:run steps only" },
-  { id: "workflow", summary: "This repo checklist (guidance + run)" },
+  { id: "finish", summary: "Run all non-guidance stages in order" },
+  { id: "stages", summary: "Minimal timeline map (id+kind) — no panorama" },
   { id: "status", summary: "Resume / recover truncated view from .evolving/last-run.json + logs" },
   { id: "json", summary: "Quiet JSON stdout; full step text under .evolving/logs/" },
-  { id: "guidance", summary: "Agent-evaluated skip_when / guidance steps" },
+  { id: "guidance", summary: "Guidance id list — body via Read evolving.yml top-down" },
 ];
 
 const TOPIC_IDS = new Set(EXPLAIN_TOPICS.map((t) => t.id));
@@ -44,29 +46,37 @@ export function buildExplainIndex(
   cwd?: string,
   configError?: string,
 ): ExplainReport {
+  const contract = agentContractFor(config);
   const project = config ? summarizeProject(config) : null;
   const next = suggestIndexNext(cwd, project);
+  const afterEdit = contract.after_edit.map((s) => `evolving ${s}`);
   return {
     evolving: 1,
     command: "explain",
     topic: "index",
     summary:
-      "evolving is a quiet JSON change-finish gate runner (not an agent runtime). Never pipe/head/tail/tee/less/jq its stdout — read the full JSON. Success is already slim; failures include output_preview; full step text is on step.log under .evolving/logs/. If your view truncated output, evolving status --full then Read the log — do not re-run to re-read. Default loop: prepare then verify.",
+      "evolving is the sole agent protocol for this repo (not an agent runtime). Downstream docs should only point here — do not duplicate rules in AGENTS.md. Quiet JSON stdout: never pipe/head/tail/tee/less/jq — read the full object. Success is slim; failures include output_preview; full step text is on step.log under .evolving/logs/. If your view truncated output, evolving status --full then Read the log — do not re-run to re-read. After edits follow after_edit (prepare then verify). Index is a map + next first step — never a full stages detail dump (no CLI panorama).",
     ok: true,
     exit_code: 0,
-    contract: AGENT_CONTRACT,
+    contract,
     topics: EXPLAIN_TOPICS,
     project,
     detail: {
-      minimal_loop: ["evolving prepare", "evolving verify"],
+      protocol_source: "evolving explain",
+      do_not_duplicate_in_downstream_docs: true,
+      after_edit: contract.after_edit,
+      minimal_loop: afterEdit,
       on_failure: "evolving status",
       on_truncated_view: "evolving status --full, then Read step.log — never re-run only to re-read",
       never_pipe: true,
-      drill_when: "first time using evolving, or when a specific topic is unclear",
+      drill_when: "first time using evolving, or when a specific machine topic is unclear",
+      progressive:
+        "index = map (stage_ids) + next first step → act top-down. Drill explain prepare|verify|check for machine detail. Guidance body: Read evolving.yml for the current step only. No CLI dumps the full timeline detail (not explain, not evolving stages).",
+      no_panorama: true,
     },
     next,
     ...(configError ? { error: configError } : {}),
-    how_to_run: ["evolving prepare", "evolving verify", "evolving status"],
+    how_to_run: [...afterEdit, "evolving status"],
   };
 }
 
@@ -74,50 +84,56 @@ export function buildExplainTopic(
   topic: ExplainTopicId,
   config: EvolvingConfig | null,
 ): ExplainReport {
+  const contract = agentContractFor(config);
   switch (topic) {
     case "contract":
-      return topicBase(topic, {
-        summary: "Stable protocol agents must follow for this package.",
+      return topicBase(topic, config, {
+        summary:
+          "Stable protocol agents must follow. Sole source: evolving explain — do not restate in downstream docs.",
         detail: {
-          contract: AGENT_CONTRACT,
-          text: agentContractText(),
+          contract,
+          text: agentContractText(config),
           ...AGENT_IO_DETAIL,
         },
         how_to_run: ["evolving explain contract"],
         see_also: ["prepare", "verify", "guidance", "json"],
-        text: agentContractText(),
+        text: agentContractText(config),
       });
     case "prepare":
-      return topicBase(topic, {
+      return topicBase(topic, config, {
         summary:
-          "Write-allowed gates. Run after edits, before verify. Prefer this over hand-editing format/lint.",
+          "Write-allowed prepare stage. Run after edits, before verify. Prefer this over hand-editing format/lint.",
         detail: {
           writes: true,
-          steps: config ? config.gates.prepare.map(gateDetail) : null,
+          steps: config ? prepareSteps(config).map(gateDetail) : null,
           note: "check/verify never run these steps.",
         },
         how_to_run: ["evolving prepare"],
         see_also: ["check", "verify", "json"],
       });
     case "check":
-      return topicBase(topic, {
-        summary: "Read-only static gates. On failure, use fix companions or evolving prepare.",
+      return topicBase(topic, config, {
+        summary:
+          "Read-only static gates nested under kind: verify (check ⊂ verify). On failure, use fix companions or evolving prepare.",
         detail: {
           readonly: true,
-          steps: config ? config.gates.check.map(gateDetail) : null,
+          nested_under: "verify.check",
+          steps: config ? checkSteps(config).map(gateDetail) : null,
         },
         how_to_run: ["evolving check", "evolving verify --check"],
         see_also: ["prepare", "verify", "json"],
       });
-    case "verify":
-      return topicBase(topic, {
+    case "verify": {
+      const gate = config ? verifyStage(config) : null;
+      return topicBase(topic, config, {
         summary: "Runs check, then git-detected suites (or explicit ids), then always.",
         detail: {
           readonly: true,
           flow: ["check", "suites(git|args)", "always"],
-          suites: config
+          inclusion: "check ⊂ verify",
+          suites: gate
             ? Object.fromEntries(
-                Object.entries(config.gates.verify.suites).map(([id, suite]) => [
+                Object.entries(gate.suites).map(([id, suite]) => [
                   id,
                   {
                     paths: suite.paths,
@@ -128,9 +144,9 @@ export function buildExplainTopic(
                 ]),
               )
             : null,
-          always: config ? (config.gates.verify.always ?? []).map(gateDetail) : null,
+          always: gate ? (gate.always ?? []).map(gateDetail) : null,
           args: {
-            suites: config ? Object.keys(config.gates.verify.suites) : [],
+            suites: gate ? Object.keys(gate.suites) : [],
             all: "run every suite",
             check: "static gates only (--check)",
           },
@@ -138,47 +154,43 @@ export function buildExplainTopic(
         how_to_run: ["evolving verify", "evolving verify all", "evolving verify --check"],
         see_also: ["prepare", "check", "status", "json"],
       });
+    }
     case "finish":
-      return topicBase(topic, {
+      return topicBase(topic, config, {
         summary:
-          "Runs every workflow step with kind: run; skips guidance by design. Put prepare+verify as run steps so finish matches prepare → verify.",
+          "Runs every non-guidance stage in order: prepare steps, full verify, then kind: run extras. Skips guidance by design.",
         detail: {
-          run_steps: config
-            ? config.workflow
-                .filter((s) => s.kind === "run")
-                .map((s) => ({ id: s.id, command: s.command }))
+          machine_stages: config
+            ? config.stages
+                .filter((s) => s.kind !== "guidance")
+                .map((s): StageView => ({ id: s.id, kind: s.kind }))
             : null,
           guidance_skipped: config
-            ? config.workflow.filter((s) => s.kind === "guidance").map((s) => s.id)
+            ? config.stages.filter((s) => s.kind === "guidance").map((s) => s.id)
             : null,
         },
         how_to_run: ["evolving finish"],
-        see_also: ["workflow", "prepare", "verify", "guidance"],
+        see_also: ["stages", "prepare", "verify", "guidance"],
       });
-    case "workflow":
-      return topicBase(topic, {
+    case "stages": {
+      const rows = config ? config.stages.map((s): StageView => ({ id: s.id, kind: s.kind })) : null;
+      return topicBase(topic, config, {
         summary:
-          "Repo checklist. Guidance is agent-evaluated; run steps are what finish executes. For a full snapshot use evolving workflow.",
+          "Minimal progressive map (id+kind + first). Not a detail dump — no summary/skip_when/refs/commands here. Work top-down; machine detail via explain prepare|verify|check; guidance via Read evolving.yml for the current step.",
         detail: {
-          steps: config
-            ? config.workflow.map((s) => ({
-                id: s.id,
-                kind: s.kind,
-                ...(s.summary ? { summary: s.summary } : {}),
-                ...(s.skip_when ? { skip_when: s.skip_when } : {}),
-                ...(s.refs ? { refs: s.refs } : {}),
-                ...(s.command ? { command: s.command } : {}),
-              }))
-            : null,
-          prepare_gate_names: config
-            ? config.gates.prepare.map((s) => s.name ?? s.command.join(" "))
-            : null,
+          after_edit: config?.after_edit ?? null,
+          stages: rows,
+          first: rows?.[0] ?? null,
+          no_panorama: true,
+          guidance_body: "Read evolving.yml for the current guidance step only",
+          machine_detail: "evolving explain prepare|check|verify",
         },
-        how_to_run: ["evolving workflow", "evolving explain workflow"],
+        how_to_run: ["evolving explain stages", "evolving stages"],
         see_also: ["guidance", "finish", "prepare", "verify"],
       });
+    }
     case "status":
-      return topicBase(topic, {
+      return topicBase(topic, config, {
         summary:
           "Reads .evolving/last-run.json and suggests next. Also the recovery path when the agent view truncated a long run — do not re-run only to re-read output.",
         detail: {
@@ -190,13 +202,13 @@ export function buildExplainTopic(
           on_truncated_view:
             "evolving status --full, then Read step.log — never head/tail evolving or re-run to re-read",
           always_next:
-            "If gates.verify.always failed, next is full verify (not selected_suites replay)",
+            "If verify.always failed, next is full verify (not selected_suites replay)",
         },
         how_to_run: ["evolving status", "evolving status --full"],
         see_also: ["json", "prepare", "verify"],
       });
     case "json":
-      return topicBase(topic, {
+      return topicBase(topic, config, {
         summary:
           "stdout is always one quiet JSON object. Never pipe or second-truncate it. Full step text is under .evolving/logs/ (step.log on every step).",
         detail: {
@@ -241,24 +253,18 @@ export function buildExplainTopic(
         see_also: ["status", "contract"],
       });
     case "guidance":
-      return topicBase(topic, {
+      return topicBase(topic, config, {
         summary:
-          "kind: guidance steps and skip_when are for the agent. The CLI never executes or evaluates them.",
+          "kind: guidance stages and skip_when are for the agent. The CLI never executes or evaluates them. This topic lists ids only — read evolving.yml for the current step's summary/refs/skip_when.",
         detail: {
           skip_when_vocabulary: SKIP_WHEN_VOCABULARY,
-          guidance_steps: config
-            ? config.workflow
-                .filter((s) => s.kind === "guidance")
-                .map((s) => ({
-                  id: s.id,
-                  ...(s.summary ? { summary: s.summary } : {}),
-                  ...(s.skip_when ? { skip_when: s.skip_when } : {}),
-                  ...(s.refs ? { refs: s.refs } : {}),
-                }))
+          guidance_stage_ids: config
+            ? config.stages.filter((s) => s.kind === "guidance").map((s) => s.id)
             : null,
+          body: "Read evolving.yml for the current guidance step only — no CLI panorama",
         },
-        how_to_run: ["evolving explain guidance", "evolving explain workflow"],
-        see_also: ["workflow", "finish", "contract"],
+        how_to_run: ["evolving explain guidance"],
+        see_also: ["stages", "finish", "contract"],
       });
   }
 }
@@ -278,7 +284,7 @@ export function resolveExplain(
       summary: `Unknown topic: ${topic}`,
       ok: false,
       exit_code: 2,
-      contract: AGENT_CONTRACT,
+      contract: agentContractFor(config),
       topics: EXPLAIN_TOPICS,
       project: config ? summarizeProject(config) : null,
       error: `Unknown topic: ${topic}. Expected: ${EXPLAIN_TOPICS.map((t) => t.id).join(", ")}`,
@@ -296,13 +302,13 @@ export function printExplain(report: ExplainReport): void {
 
 function topicBase(
   topic: ExplainTopicId,
+  config: EvolvingConfig | null,
   fields: {
     summary: string;
     detail?: unknown;
     how_to_run?: readonly string[];
     see_also?: readonly ExplainTopicId[];
     text?: string;
-    contract_note?: string;
   },
 ): ExplainReport {
   return {
@@ -312,7 +318,7 @@ function topicBase(
     summary: fields.summary,
     ok: true,
     exit_code: 0,
-    contract: AGENT_CONTRACT,
+    contract: agentContractFor(config),
     ...(fields.detail !== undefined ? { detail: fields.detail } : {}),
     ...(fields.how_to_run ? { how_to_run: fields.how_to_run } : {}),
     ...(fields.see_also ? { see_also: fields.see_also } : {}),
@@ -321,20 +327,16 @@ function topicBase(
 }
 
 function summarizeProject(config: EvolvingConfig): ExplainProjectSummary {
-  const workflow_ids = config.workflow.map((s) => s.id);
-  const workflow_run_ids = config.workflow.filter((s) => s.kind === "run").map((s) => s.id);
-  const workflow_guidance_ids = config.workflow
-    .filter((s) => s.kind === "guidance")
-    .map((s) => s.id);
+  const prepare = prepareSteps(config);
+  const gate = verifyStage(config);
   return {
-    workflow_ids,
-    workflow_run_ids,
-    workflow_guidance_ids,
-    suite_ids: Object.keys(config.gates.verify.suites),
-    has_prepare: config.gates.prepare.length > 0,
-    prepare_count: config.gates.prepare.length,
-    check_count: config.gates.check.length,
-    always_count: (config.gates.verify.always ?? []).length,
+    stage_ids: config.stages.map((s) => s.id),
+    after_edit: config.after_edit,
+    suite_ids: Object.keys(gate.suites),
+    has_prepare: prepare.length > 0,
+    prepare_count: prepare.length,
+    check_count: gate.check.length,
+    always_count: (gate.always ?? []).length,
   };
 }
 

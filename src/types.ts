@@ -19,18 +19,6 @@ export interface GateCommand {
   onMissing?: "warn";
 }
 
-export interface WorkflowStep {
-  id: string;
-  kind: "guidance" | "run";
-  summary?: string;
-  refs?: readonly string[];
-  /** Documentation-only skip hint for agents; the CLI never evaluates it. */
-  skip_when?: string;
-  /** Required when kind is run. */
-  command?: readonly string[];
-  env?: Readonly<Record<string, string>>;
-}
-
 export interface VerifySuite {
   paths: readonly string[];
   /**
@@ -44,25 +32,57 @@ export interface VerifySuite {
   name?: string;
 }
 
-export interface VerifyGate {
+/** Agent-only checklist step; CLI never executes. */
+export interface GuidanceStage {
+  id: string;
+  kind: "guidance";
+  summary?: string;
+  refs?: readonly string[];
+  /** Documentation-only skip hint for agents; the CLI never evaluates it. */
+  skip_when?: string;
+}
+
+/** Write-allowed machine stage (format / lint:fix). At most one per config. */
+export interface PrepareStage {
+  id: string;
+  kind: "prepare";
+  steps: readonly GateCommand[];
+}
+
+/**
+ * Read-only verify stage. Exactly one per config.
+ * `check` is nested so inclusion (check ⊂ verify) is visible in YAML.
+ */
+export interface VerifyStage {
+  id: string;
+  kind: "verify";
+  check: readonly GateCommand[];
   detect: "git";
   suites: Readonly<Record<string, VerifySuite>>;
   always?: readonly GateCommand[];
 }
 
-export interface EvolvingConfig {
-  version: 1;
-  workflow: readonly WorkflowStep[];
-  gates: {
-    /**
-     * Write-allowed steps (format / lint:fix). Run via `evolving prepare`.
-     * check and verify never run these.
-     */
-    prepare: readonly GateCommand[];
-    check: readonly GateCommand[];
-    verify: VerifyGate;
-  };
+/** One-shot machine command included by finish (e.g. codegen). */
+export interface RunStage {
+  id: string;
+  kind: "run";
+  command: readonly string[];
+  env?: Readonly<Record<string, string>>;
 }
+
+export type Stage = GuidanceStage | PrepareStage | VerifyStage | RunStage;
+
+export type AfterEditStep = "prepare" | "verify";
+
+export interface EvolvingConfig {
+  version: 2;
+  /** Protocol order after code edits; surfaced by explain/contract. */
+  after_edit: readonly AfterEditStep[];
+  stages: readonly Stage[];
+}
+
+/** @deprecated Use VerifyStage; kept as alias for detect helpers. */
+export type VerifyGate = Pick<VerifyStage, "detect" | "suites" | "always">;
 
 export interface StepResult {
   name: string;
@@ -122,11 +142,14 @@ export interface RunReport {
 }
 
 export interface AgentContract {
-  order: readonly ["prepare", "verify"];
+  order: readonly AfterEditStep[];
+  after_edit: readonly AfterEditStep[];
   prepare_writes: true;
   check_verify_readonly: true;
-  finish_runs: "workflow.kind=run only";
+  finish_runs: "non-guidance stages";
   guidance: "agent-evaluated; CLI does not execute";
+  protocol_source: "evolving explain";
+  do_not_duplicate_in_downstream_docs: true;
   do_not_hand_edit_when_fix_exists: true;
   skip_when_vocabulary: readonly string[];
 }
@@ -139,39 +162,22 @@ export interface GateCommandView {
   showOutputOnSuccess?: boolean;
 }
 
-export interface WorkflowStepView {
+/** Minimal stage row — progressive map only; no guidance body or gate argv. */
+export interface StageView {
   id: string;
-  kind: "guidance" | "run";
-  summary?: string;
-  refs?: readonly string[];
-  skip_when?: string;
-  command?: readonly string[];
+  kind: Stage["kind"];
 }
 
-export interface WorkflowView {
+export interface StagesView {
   evolving: 1;
-  command: "workflow";
+  command: "stages";
   contract: AgentContract;
-  workflow: readonly WorkflowStepView[];
-  gates: {
-    prepare: readonly GateCommandView[];
-    check: readonly GateCommandView[];
-    verify: {
-      detect: "git";
-      suites: Readonly<
-        Record<
-          string,
-          {
-            paths: readonly string[];
-            command?: readonly string[];
-            also?: readonly string[];
-            name?: string;
-          }
-        >
-      >;
-      always: readonly GateCommandView[];
-    };
-  };
+  after_edit: readonly AfterEditStep[];
+  /** Ordered id+kind map — never a full detail dump. */
+  stages: readonly StageView[];
+  /** First stage to consider (same id+kind shape; no panorama). */
+  first: StageView | null;
+  progressive: string;
 }
 
 export interface StatusReport {
@@ -193,7 +199,7 @@ export type ExplainTopicId =
   | "check"
   | "verify"
   | "finish"
-  | "workflow"
+  | "stages"
   | "status"
   | "json"
   | "guidance";
@@ -203,11 +209,10 @@ export interface ExplainTopicRef {
   summary: string;
 }
 
-/** Lightweight project snapshot for explain index (no gate argv dump). */
+/** Lightweight project snapshot for explain index (no gate argv / guidance body). */
 export interface ExplainProjectSummary {
-  workflow_ids: readonly string[];
-  workflow_run_ids: readonly string[];
-  workflow_guidance_ids: readonly string[];
+  stage_ids: readonly string[];
+  after_edit: readonly AfterEditStep[];
   suite_ids: readonly string[];
   has_prepare: boolean;
   prepare_count: number;

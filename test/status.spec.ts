@@ -7,6 +7,7 @@ import { loadConfig } from "../src/load-config.ts";
 import { buildStatus, printStatus } from "../src/status.ts";
 import type { RunReport } from "../src/types.ts";
 import { runVerify } from "../src/verify.ts";
+import { minimalV2Yaml } from "./helpers/v2-yaml.ts";
 
 describe("status", () => {
   it("returns state none when no last-run exists", () => {
@@ -25,21 +26,11 @@ describe("status", () => {
     const dir = mkdtempSync(join(tmpdir(), "evolving-status-fix-"));
     writeFileSync(
       join(dir, "evolving.yml"),
-      `
-version: 1
-workflow:
-  - id: verify
-    kind: run
-    command: ["true"]
-gates:
-  check:
-    - name: lint
-      command: ["node", "-e", "process.exit(1)"]
-      fix: ["npm", "run", "lint:fix"]
-  verify:
-    detect: git
-    suites: {}
-`,
+      minimalV2Yaml({
+        checkYaml: `      - name: lint
+        command: ["node", "-e", "process.exit(1)"]
+        fix: ["npm", "run", "lint:fix"]`,
+      }),
     );
     const original = console.log;
     console.log = () => {};
@@ -60,20 +51,10 @@ gates:
     const dir = mkdtempSync(join(tmpdir(), "evolving-status-full-"));
     writeFileSync(
       join(dir, "evolving.yml"),
-      `
-version: 1
-workflow:
-  - id: verify
-    kind: run
-    command: ["true"]
-gates:
-  check:
-    - name: lint
-      command: ["node", "-e", "process.exit(1)"]
-  verify:
-    detect: git
-    suites: {}
-`,
+      minimalV2Yaml({
+        checkYaml: `      - name: lint
+        command: ["node", "-e", "process.exit(1)"]`,
+      }),
     );
     const original = console.log;
     console.log = () => {};
@@ -163,14 +144,12 @@ describe("verify always next integration", () => {
     writeFileSync(
       join(dir, "evolving.yml"),
       `
-version: 1
-workflow:
+version: 2
+after_edit: [prepare, verify]
+stages:
   - id: verify
-    kind: run
-    command: ["true"]
-gates:
-  check: []
-  verify:
+    kind: verify
+    check: []
     detect: git
     suites:
       lib:

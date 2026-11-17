@@ -3,26 +3,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runCheck } from "../src/check.ts";
 import { loadConfig, parseConfig } from "../src/load-config.ts";
+import { checkSteps } from "../src/stages-access.ts";
+import { minimalV2Yaml } from "./helpers/v2-yaml.ts";
 
 const MISSING_BIN = "evolving-not-installed-bin-9f3a2c";
 
 function writeCheckConfig(dir: string, checkYaml: string): void {
-  writeFileSync(
-    join(dir, "evolving.yml"),
-    `
-version: 1
-workflow:
-  - id: verify
-    kind: run
-    command: ["true"]
-gates:
-  check:
-${checkYaml}
-  verify:
-    detect: git
-    suites: {}
-`,
-  );
+  writeFileSync(join(dir, "evolving.yml"), minimalV2Yaml({ checkYaml }));
 }
 
 async function captureCheck(dir: string) {
@@ -38,25 +25,35 @@ async function captureCheck(dir: string) {
 describe("onMissing: warn", () => {
   it("parses onMissing warn on a gate command", () => {
     const config = parseConfig({
-      version: 1,
-      workflow: [{ id: "verify", kind: "run", command: ["true"] }],
-      gates: {
-        check: [{ name: "gitleaks", command: ["gitleaks", "detect"], onMissing: "warn" }],
-        verify: { detect: "git", suites: {} },
-      },
+      version: 2,
+      after_edit: ["prepare", "verify"],
+      stages: [
+        {
+          id: "verify",
+          kind: "verify",
+          check: [{ name: "gitleaks", command: ["gitleaks", "detect"], onMissing: "warn" }],
+          detect: "git",
+          suites: {},
+        },
+      ],
     });
-    expect(config.gates.check[0]?.onMissing).toBe("warn");
+    expect(checkSteps(config)[0]?.onMissing).toBe("warn");
   });
 
   it("rejects unknown onMissing values", () => {
     expect(() =>
       parseConfig({
-        version: 1,
-        workflow: [{ id: "verify", kind: "run", command: ["true"] }],
-        gates: {
-          check: [{ command: ["true"], onMissing: "skip" }],
-          verify: { detect: "git", suites: {} },
-        },
+        version: 2,
+        after_edit: ["prepare", "verify"],
+        stages: [
+          {
+            id: "verify",
+            kind: "verify",
+            check: [{ command: ["true"], onMissing: "skip" }],
+            detect: "git",
+            suites: {},
+          },
+        ],
       }),
     ).toThrow(/onMissing/);
   });
@@ -65,9 +62,9 @@ describe("onMissing: warn", () => {
     const dir = mkdtempSync(join(tmpdir(), "evolving-on-missing-"));
     writeCheckConfig(
       dir,
-      `    - name: secrets
-      command: ["${MISSING_BIN}"]
-      onMissing: warn
+      `      - name: secrets
+        command: ["${MISSING_BIN}"]
+        onMissing: warn
 `,
     );
     const report = await captureCheck(dir);
@@ -82,8 +79,8 @@ describe("onMissing: warn", () => {
     const dir = mkdtempSync(join(tmpdir(), "evolving-on-missing-fail-"));
     writeCheckConfig(
       dir,
-      `    - name: secrets
-      command: ["${MISSING_BIN}"]
+      `      - name: secrets
+        command: ["${MISSING_BIN}"]
 `,
     );
     const report = await captureCheck(dir);
@@ -97,9 +94,9 @@ describe("onMissing: warn", () => {
     const dir = mkdtempSync(join(tmpdir(), "evolving-on-missing-findings-"));
     writeCheckConfig(
       dir,
-      `    - name: secrets
-      command: ["node", "-e", "process.exit(1)"]
-      onMissing: warn
+      `      - name: secrets
+        command: ["node", "-e", "process.exit(1)"]
+        onMissing: warn
 `,
     );
     const report = await captureCheck(dir);

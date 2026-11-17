@@ -5,13 +5,13 @@ import { printExplain, resolveExplain } from "./explain.ts";
 import { loadConfig } from "./load-config.ts";
 import { runPrepare } from "./prepare.ts";
 import { printJson } from "./report.ts";
+import { printStages } from "./stages.ts";
 import { printStatus } from "./status.ts";
 import { runVerify } from "./verify.ts";
-import { printWorkflow } from "./workflow.ts";
 
 const USAGE = `Usage:
   evolving explain [topic] [--config path]
-  evolving workflow [--config path]
+  evolving stages [--config path]
   evolving prepare [--config path]
   evolving check [--config path]
   evolving verify [suite|all...] [--check] [--e2e] [--config path]
@@ -19,8 +19,8 @@ const USAGE = `Usage:
   evolving status [--full] [--config path]
   evolving agent-contract   # alias: explain contract
 
-For agents: evolving explain
-prepare runs gates.prepare (may write). check and verify are read-only.
+For agents: evolving explain (sole protocol source).
+prepare may write; check and verify are read-only.
 stdout is always one JSON object.
 `;
 
@@ -71,8 +71,8 @@ async function main(): Promise<void> {
   }
 
   switch (command) {
-    case "workflow":
-      printWorkflow(config);
+    case "stages":
+      printStages(config);
       return;
     case "prepare":
       process.exitCode = (await runPrepare(cwd, config)).exit_code;

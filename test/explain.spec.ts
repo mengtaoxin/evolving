@@ -32,7 +32,11 @@ describe("explain", () => {
     expect(report.next).toEqual(["explain contract"]);
     expect(report.summary).toMatch(/quiet JSON/i);
     expect(report.summary).toMatch(/Never pipe/i);
+    expect(report.summary).toMatch(/sole agent protocol/i);
     expect(report.detail).toMatchObject({
+      protocol_source: "evolving explain",
+      do_not_duplicate_in_downstream_docs: true,
+      after_edit: ["prepare", "verify"],
       minimal_loop: ["evolving prepare", "evolving verify"],
       on_failure: "evolving status",
       never_pipe: true,
@@ -44,24 +48,80 @@ describe("explain", () => {
     expect(report.how_to_run?.join(" ")).not.toContain("--json");
   });
 
-
   it("index with fixture summarizes project without dumping gate argv", () => {
     const config = loadFixture();
     const report = buildExplainIndex(config);
-    expect(report.project?.workflow_ids).toEqual([
+    expect(report.project?.stage_ids).toEqual([
       "orient",
       "tests",
       "prepare",
       "verify",
       "docs",
     ]);
+    expect(report.project?.after_edit).toEqual(["prepare", "verify"]);
     expect(report.project?.suite_ids).toEqual(["lib", "app", "shared", "deps"]);
     expect(report.project?.has_prepare).toBe(true);
     expect(report.project?.prepare_count).toBe(2);
+    expect(report.project).not.toHaveProperty("machine_stage_ids");
+    expect(report.project).not.toHaveProperty("guidance_stage_ids");
     expect(report.next).toEqual(["prepare"]);
+    expect(report.detail).toMatchObject({ no_panorama: true });
+    expect(String((report.detail as { progressive?: string }).progressive)).toMatch(
+      /no CLI dumps/i,
+    );
     const blob = JSON.stringify(report);
     expect(blob).not.toContain("npm run format");
     expect(blob).not.toContain("test:lib");
+    expect(blob).not.toContain("Locate entry files");
+    expect(blob).not.toContain("docs/overview.md");
+  });
+
+  it("explain stages is a minimal id+kind map without panorama", () => {
+    const report = buildExplainTopic("stages", loadFixture());
+    const detail = report.detail as {
+      stages: Array<{ id: string; kind: string }>;
+      first: { id: string; kind: string };
+      no_panorama: boolean;
+    };
+    expect(detail.stages).toEqual([
+      { id: "orient", kind: "guidance" },
+      { id: "tests", kind: "guidance" },
+      { id: "prepare", kind: "prepare" },
+      { id: "verify", kind: "verify" },
+      { id: "docs", kind: "guidance" },
+    ]);
+    expect(detail.first).toEqual({ id: "orient", kind: "guidance" });
+    expect(detail.no_panorama).toBe(true);
+    const blob = JSON.stringify(report);
+    expect(blob).not.toContain("Locate entry files");
+    expect(blob).not.toContain("docs/overview.md");
+    expect(blob).not.toContain("npm run format");
+    expect(blob).not.toContain("Red → Green");
+  });
+
+  it("explain guidance lists ids only", () => {
+    const report = buildExplainTopic("guidance", loadFixture());
+    const detail = report.detail as { guidance_stage_ids: string[] };
+    expect(detail.guidance_stage_ids).toEqual(["orient", "tests", "docs"]);
+    expect(detail).not.toHaveProperty("guidance_stages");
+    const blob = JSON.stringify(report);
+    expect(blob).not.toContain("Locate entry files");
+    expect(blob).not.toContain("docs/overview.md");
+    expect(blob).not.toContain("Red → Green");
+  });
+
+  it("explain finish lists machine stages as id+kind only", () => {
+    const report = buildExplainTopic("finish", loadFixture());
+    const detail = report.detail as {
+      machine_stages: Array<{ id: string; kind: string }>;
+      guidance_skipped: string[];
+    };
+    expect(detail.machine_stages).toEqual([
+      { id: "prepare", kind: "prepare" },
+      { id: "verify", kind: "verify" },
+    ]);
+    expect(detail.guidance_skipped).toEqual(["orient", "tests", "docs"]);
+    expect(JSON.stringify(report)).not.toContain("npm run");
   });
 
   it("explain prepare includes this repo prepare commands", () => {
@@ -79,6 +139,7 @@ describe("explain", () => {
     expect(report.exit_code).toBe(2);
     expect(report.error).toMatch(/Unknown topic: nope/);
     expect(report.error).toContain("prepare");
+    expect(report.error).toContain("stages");
   });
 
   it("explain contract matches AGENT_CONTRACT (agent-contract alias target)", () => {
@@ -90,6 +151,7 @@ describe("explain", () => {
     expect(detail.do.length).toBeGreaterThan(0);
     expect(detail.do_not.some((line) => /^Never pipe/i.test(line))).toBe(true);
     expect(detail.do_not.some((line) => /second-truncate/i.test(line))).toBe(true);
+    expect(detail.do_not.some((line) => /downstream/i.test(line))).toBe(true);
     expect(detail.do.some((line) => /status --full/i.test(line))).toBe(true);
   });
 
@@ -126,4 +188,3 @@ describe("explain", () => {
     expect(report.summary).toMatch(/truncated/i);
   });
 });
-
