@@ -1,7 +1,7 @@
 {
   "name": "@mengtaoxin/evolving",
-  "version": "0.7.0",
-  "description": "Declarative change-finish stages and serial prepare/check/verify runner driven by evolving.yml (v2)",
+  "version": "0.8.0",
+  "description": "Declarative change-finish stages and serial prepare/verify runner driven by evolving.yml (v2)",
   "license": "MIT",
   "type": "module",
   "bin": {

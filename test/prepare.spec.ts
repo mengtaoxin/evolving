@@ -11,8 +11,9 @@ describe("runPrepare", () => {
     writeFileSync(
       join(dir, "evolving.yml"),
       minimalV2Yaml({
-        checkYaml: `      - command: ["true"]`,
-        prepareStepsYaml: `      - name: touch
+        verifyCommandsYaml: `      - name: ok
+        command: ["true"]`,
+        prepareCommandsYaml: `      - name: touch
         command: ["node", "-e", "require('node:fs').writeFileSync('prepared.txt','ok')"]`,
       }),
     );
@@ -30,12 +31,13 @@ describe("runPrepare", () => {
     ).toBe("ok");
   });
 
-  it("exits 0 with empty steps when prepare stage is omitted", async () => {
+  it("exits 0 with empty commands when prepare stage is omitted", async () => {
     const dir = mkdtempSync(join(tmpdir(), "evolving-prepare-empty-"));
     writeFileSync(
       join(dir, "evolving.yml"),
       minimalV2Yaml({
-        checkYaml: `      - command: ["true"]`,
+        verifyCommandsYaml: `      - name: ok
+        command: ["true"]`,
       }),
     );
     const lines: string[] = [];

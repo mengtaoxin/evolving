@@ -3,13 +3,19 @@ import type {
   GateCommand,
   PrepareStage,
   RunStage,
+  VerifyCommand,
   VerifyStage,
 } from "./types.ts";
 
-/** Steps from the optional prepare stage; empty when omitted. */
-export function prepareSteps(config: EvolvingConfig): readonly GateCommand[] {
+/** Commands from the optional prepare stage; empty when omitted. */
+export function prepareCommands(config: EvolvingConfig): readonly GateCommand[] {
   const stage = config.stages.find((s): s is PrepareStage => s.kind === "prepare");
-  return stage?.steps ?? [];
+  return stage?.commands ?? [];
+}
+
+/** @deprecated Use prepareCommands */
+export function prepareSteps(config: EvolvingConfig): readonly GateCommand[] {
+  return prepareCommands(config);
 }
 
 /** The required verify stage (guaranteed by parseConfig). */
@@ -19,8 +25,8 @@ export function verifyStage(config: EvolvingConfig): VerifyStage {
   return stage;
 }
 
-export function checkSteps(config: EvolvingConfig): readonly GateCommand[] {
-  return verifyStage(config).check;
+export function verifyCommands(config: EvolvingConfig): readonly VerifyCommand[] {
+  return verifyStage(config).commands;
 }
 
 /** Machine stages finish executes, in order (prepare / verify / run). */

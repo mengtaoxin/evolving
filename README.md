@@ -1,6 +1,6 @@
 # @mengtaoxin/evolving
 
-Project-agnostic change-finish **stages** and serial **prepare** / **check** / **verify** runner.
+Project-agnostic change-finish **stages** and serial **prepare** / **verify** runner.
 
 Put an `evolving.yml` (`version: 2`) at the repo root. The CLI loads that file and `spawn`s the commands you declare. Formatters, linters, and test runners stay in the consumer repo.
 
@@ -28,16 +28,15 @@ Copy [templates/AGENTS.evolving.md](templates/AGENTS.evolving.md) if useful.
 | --- | --- |
 | `evolving explain [topic]` | **Agent entry**: map + next first step, or one machine topic drilled |
 | `evolving stages` | Minimal id+kind timeline (+ first) — not a full detail dump |
-| `evolving prepare` | Run `kind: prepare` steps only (may write the tree: format / lint:fix) |
-| `evolving check` | Run `verify.check` only (read-only; check ⊂ verify) |
-| `evolving verify` | `check`, then suites from git detect (or explicit ids), then `always` (read-only) |
+| `evolving prepare` | Run `kind: prepare` commands only (may write the tree: format / lint:fix) |
+| `evolving verify` | Run `verify.commands` in order: always-on + git path select + `command://` (read-only) |
 | `evolving finish` | Run every non-guidance stage in order (prepare → verify → `kind: run`) |
 | `evolving status` | Read `.evolving/last-run.json` and suggest `next` |
 | `evolving agent-contract` | Alias of `explain contract` |
 
-Flags: `--config <path>`, `status --full` (embed full last-run), `verify --check` (static gates only), `verify --e2e` (accepted no-op for older habits). stdout is always one JSON object.
+Flags: `--config <path>`, `status --full` (embed full last-run), `verify --e2e` (accepted no-op for older habits). stdout is always one JSON object.
 
-**Order:** after editing code, follow `after_edit` in `evolving.yml` (typically `prepare` then `verify`). Do not hand-edit whitespace when a prepare / `fix` companion exists. `check` and `verify` never mutate the tree.
+**Order:** after editing code, follow `after_edit` in `evolving.yml` (typically `prepare` then `verify`). Do not hand-edit whitespace when a prepare stage exists — run `evolving prepare`. `verify` never mutates the tree.
 
 ## Agent usage
 
@@ -53,7 +52,7 @@ evolving verify
 evolving status
 ```
 
-Topics: `contract`, `prepare`, `check`, `verify`, `finish`, `stages`, `status`, `json`, `guidance`.
+Topics: `contract`, `prepare`, `verify`, `finish`, `stages`, `status`, `json`, `guidance`.
 
 - Guidance stages (`kind: guidance`, `skip_when`) are **agent-evaluated**; the CLI never executes them. Read `evolving.yml` for the **current** guidance step only.
 - `evolving stages` / `explain stages` are a minimal `{id,kind}` map (+ first), not a full timeline dump.
@@ -74,49 +73,48 @@ stages:
     skip_when: entry_file_known
   - id: prepare
     kind: prepare
-    steps:
+    commands:
       - name: format
         command: ["npm", "run", "format"]
       - name: lint:fix
         command: ["npm", "run", "lint:fix"]
   - id: verify
     kind: verify
-    check:
+    commands:
       - name: format:check
         command: ["npm", "run", "format:check"]
-        fix: ["npm", "run", "format"]
       - name: lint
         command: ["npm", "run", "lint"]
-        fix: ["npm", "run", "lint:fix"]
       # optional host binary: missing → warn; findings → fail
       - name: gitleaks
         command: ["gitleaks", "detect", "--source", "."]
         onMissing: warn
-    detect: git
-    suites:
-      lib:
-        paths: ["packages/lib/"]
+      - name: test:lib
         command: ["npm", "run", "test:lib"]
-      deps:
-        paths: ["package.json", "package-lock.json"]
-        also: [lib]   # select-only suite: no command, only expands also
-    always: []
+        run_in_file_change: ["packages/lib/"]
+      - name: deps
+        command: ["command://test:lib"]
+        run_in_file_change: ["package.json", "package-lock.json"]
+      - name: test:e2e
+        command: ["npm", "run", "test:e2e"]
   - id: docs
     kind: guidance
     summary: Update owning docs if a contract changed
 ```
 
-Suite ids, paths, and commands are entirely yours. A suite may omit `command` when it only expands `also`. JSON Schema: [schema/evolving.schema.json](schema/evolving.schema.json).
+- `commands` items share the same shape: `name` + `command` (optional `id`, defaults to `name`).
+- Omit `run_in_file_change` to always run on verify; set it for git path selection.
+- `command://id` expands to other verify commands (composition). Do not mix refs with real argv tokens.
+- JSON Schema: [schema/evolving.schema.json](schema/evolving.schema.json).
 
 - `kind: prepare` — write-allowed; optional (omit the stage → empty prepare).
-- `fix` on a check step — included in JSON `failure[]` / step fields when that step fails under `check` / `verify`; not executed there. Prefer `evolving prepare` (or the printed argv) over hand edits.
 - `onMissing: warn` on a gate command — if the executable is not on PATH (`spawn` ENOENT), print a warn and continue; real non-zero exits from an installed tool still fail.
-- `.evolving/last-run.json` — written after prepare/check/verify/finish; safe to gitignore in consumer repos.
+- `.evolving/last-run.json` — written after prepare/verify/finish; safe to gitignore in consumer repos.
 - `.evolving/logs/` — full per-step stdout/stderr; every `step.log` points here.
 
 ## Design notes
 
-- Prepare writes; check / verify assert. Keep that split so local gates stay trustworthy and CI can mirror read-only checks.
+- Prepare writes; verify asserts. Keep that split so local gates stay trustworthy and CI can mirror read-only checks.
 - CI belongs in each repo’s GitHub Actions (or other) workflow — this package does not define `evolving ci`.
 - `skip_when` on guidance stages is documentation for agents; the CLI does not evaluate it.
 - evolving is a deterministic gate runner + progressive checklist, not an agent runtime (no LangGraph).

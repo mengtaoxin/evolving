@@ -8,28 +8,24 @@ export interface GateCommand {
   /** When true, non-empty stdout/stderr is printed even on success (e.g. lint warnings). */
   showOutputOnSuccess?: boolean;
   /**
-   * Write-side companion argv. Printed as a hint when this step fails under
-   * check/verify; never executed by those commands (use `evolving prepare`).
-   */
-  fix?: readonly string[];
-  /**
    * When the executable is not on PATH (`spawn` ENOENT): `warn` prints a
    * reminder and does not fail the gate. Other non-zero exits still fail.
    */
   onMissing?: "warn";
 }
 
-export interface VerifySuite {
-  paths: readonly string[];
-  /**
-   * Command to run when this suite is selected.
-   * Omit when the suite only expands `also` (e.g. root lockfile → other suites).
-   */
-  command?: readonly string[];
-  /** Suite ids to also select when this suite matches via git detect (not via CLI args). */
-  also?: readonly string[];
+/**
+ * One verify list item. `command` is either a real argv or only `command://id` refs.
+ * Optional `run_in_file_change` selects via git; omit to always run.
+ */
+export interface VerifyCommand {
+  id: string;
+  name: string;
+  command: readonly string[];
+  run_in_file_change?: readonly string[];
   env?: Readonly<Record<string, string>>;
-  name?: string;
+  showOutputOnSuccess?: boolean;
+  onMissing?: "warn";
 }
 
 /** Agent-only checklist step; CLI never executes. */
@@ -46,20 +42,14 @@ export interface GuidanceStage {
 export interface PrepareStage {
   id: string;
   kind: "prepare";
-  steps: readonly GateCommand[];
+  commands: readonly GateCommand[];
 }
 
-/**
- * Read-only verify stage. Exactly one per config.
- * `check` is nested so inclusion (check ⊂ verify) is visible in YAML.
- */
+/** Read-only verify stage. Exactly one per config. */
 export interface VerifyStage {
   id: string;
   kind: "verify";
-  check: readonly GateCommand[];
-  detect: "git";
-  suites: Readonly<Record<string, VerifySuite>>;
-  always?: readonly GateCommand[];
+  commands: readonly VerifyCommand[];
 }
 
 /** One-shot machine command included by finish (e.g. codegen). */
@@ -81,9 +71,6 @@ export interface EvolvingConfig {
   stages: readonly Stage[];
 }
 
-/** @deprecated Use VerifyStage; kept as alias for detect helpers. */
-export type VerifyGate = Pick<VerifyStage, "detect" | "suites" | "always">;
-
 export interface StepResult {
   name: string;
   code: number;
@@ -93,15 +80,14 @@ export interface StepResult {
   missingExecutable?: boolean;
 }
 
-export type RunCommandName = "prepare" | "check" | "verify" | "finish";
+export type RunCommandName = "prepare" | "verify" | "finish";
 
-/** One gate/suite step as exposed to agents (JSON stdout / last-run). */
+/** One gate/command step as exposed to agents (JSON stdout / last-run). */
 export interface ReportStep {
   name: string;
   ok: boolean;
   code: number;
   seconds: number;
-  fix?: readonly string[];
   log?: string;
   output_preview?: string;
   missing_executable?: boolean;
@@ -110,16 +96,15 @@ export interface ReportStep {
 /** Top-level failure summary so agents need not scan steps[]. */
 export interface FailureSummary {
   name: string;
-  fix?: readonly string[];
   log?: string;
   output_preview?: string;
 }
 
 export interface VerifyReportMeta {
-  check_only: boolean;
   changed_paths_count: number;
-  selected_suites: readonly string[];
-  always: readonly string[];
+  selected: readonly string[];
+  /** Ids with no run_in_file_change that were in the selection. */
+  always_on: readonly string[];
 }
 
 export interface RunReport {
@@ -130,7 +115,7 @@ export interface RunReport {
   seconds: number;
   steps: readonly ReportStep[];
   failed: readonly string[];
-  /** Structured failures (name / fix / log / output_preview). Empty on success. */
+  /** Structured failures (name / log / output_preview). Empty on success. */
   failure: readonly FailureSummary[];
   /** Absolute path to .evolving/last-run.json after persist. */
   last_run_path?: string;
@@ -145,19 +130,27 @@ export interface AgentContract {
   order: readonly AfterEditStep[];
   after_edit: readonly AfterEditStep[];
   prepare_writes: true;
-  check_verify_readonly: true;
+  verify_readonly: true;
   finish_runs: "non-guidance stages";
   guidance: "agent-evaluated; CLI does not execute";
   protocol_source: "evolving explain";
   do_not_duplicate_in_downstream_docs: true;
-  do_not_hand_edit_when_fix_exists: true;
+  do_not_hand_edit_when_prepare_exists: true;
   skip_when_vocabulary: readonly string[];
 }
 
 export interface GateCommandView {
   name?: string;
   command: readonly string[];
-  fix?: readonly string[];
+  onMissing?: "warn";
+  showOutputOnSuccess?: boolean;
+}
+
+export interface VerifyCommandView {
+  id: string;
+  name: string;
+  command: readonly string[];
+  run_in_file_change?: readonly string[];
   onMissing?: "warn";
   showOutputOnSuccess?: boolean;
 }
@@ -196,7 +189,6 @@ export interface StatusReport {
 export type ExplainTopicId =
   | "contract"
   | "prepare"
-  | "check"
   | "verify"
   | "finish"
   | "stages"
@@ -213,11 +205,11 @@ export interface ExplainTopicRef {
 export interface ExplainProjectSummary {
   stage_ids: readonly string[];
   after_edit: readonly AfterEditStep[];
-  suite_ids: readonly string[];
+  command_ids: readonly string[];
   has_prepare: boolean;
   prepare_count: number;
-  check_count: number;
-  always_count: number;
+  verify_count: number;
+  always_on_count: number;
 }
 
 export interface ExplainReport {
@@ -236,4 +228,19 @@ export interface ExplainReport {
   next?: readonly string[];
   error?: string;
   text?: string;
+}
+
+export const COMMAND_REF_PREFIX = "command://";
+
+export function isCommandRef(token: string): boolean {
+  return token.startsWith(COMMAND_REF_PREFIX);
+}
+
+export function commandRefId(token: string): string {
+  return token.slice(COMMAND_REF_PREFIX.length);
+}
+
+/** True when every argv element is a command:// ref (composition entry). */
+export function isRefOnlyCommand(command: readonly string[]): boolean {
+  return command.length > 0 && command.every(isCommandRef);
 }

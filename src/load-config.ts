@@ -9,11 +9,25 @@ import type {
   PrepareStage,
   RunStage,
   Stage,
+  VerifyCommand,
   VerifyStage,
-  VerifySuite,
+} from "./types.ts";
+import {
+  COMMAND_REF_PREFIX,
+  commandRefId,
+  isCommandRef,
+  isRefOnlyCommand,
 } from "./types.ts";
 
 const CONFIG_NAME = "evolving.yml";
+
+const REMOVED_VERIFY_KEYS = [
+  "check",
+  "detect",
+  "suites",
+  "always",
+  "steps",
+] as const;
 
 export function configPath(cwd: string, explicit?: string): string {
   if (explicit) return isAbsolute(explicit) ? explicit : join(cwd, explicit);
@@ -45,6 +59,7 @@ export function parseConfig(raw: unknown, source = "evolving.yml"): EvolvingConf
 
   const stages = stagesRaw.map((item, i) => parseStage(item, `${source}: stages[${i}]`));
   assertStageUniqueness(stages, source);
+  assertVerifyCommandGraph(stages, source);
 
   return { version: 2, after_edit, stages };
 }
@@ -73,6 +88,26 @@ function assertStageUniqueness(stages: readonly Stage[], source: string): void {
   }
 }
 
+function assertVerifyCommandGraph(stages: readonly Stage[], source: string): void {
+  const verify = stages.find((s): s is VerifyStage => s.kind === "verify");
+  if (!verify) return;
+  const byId = new Map(verify.commands.map((c) => [c.id, c]));
+  for (const cmd of verify.commands) {
+    if (!isRefOnlyCommand(cmd.command)) continue;
+    for (const token of cmd.command) {
+      const refId = commandRefId(token);
+      if (!byId.has(refId)) {
+        throw new Error(
+          `${source}: verify command "${cmd.id}" references unknown ${COMMAND_REF_PREFIX}${refId}`,
+        );
+      }
+      if (refId === cmd.id) {
+        throw new Error(`${source}: verify command "${cmd.id}" must not reference itself`);
+      }
+    }
+  }
+}
+
 function parseStage(raw: unknown, label: string): Stage {
   const obj = requireRecord(raw, label);
   const id = requireString(obj.id, `${label}.id`);
@@ -89,7 +124,17 @@ function parseGuidanceStage(
   id: string,
   label: string,
 ): GuidanceStage {
-  forbidKeys(obj, label, ["command", "steps", "check", "detect", "suites", "always", "env"]);
+  forbidKeys(obj, label, [
+    "command",
+    "commands",
+    "steps",
+    "check",
+    "detect",
+    "suites",
+    "always",
+    "env",
+    "fix",
+  ]);
   const stage: GuidanceStage = { id, kind: "guidance" };
   if (obj.summary !== undefined) stage.summary = requireString(obj.summary, `${label}.summary`);
   if (obj.skip_when !== undefined) {
@@ -104,6 +149,9 @@ function parseGuidanceStage(
 }
 
 function parsePrepareStage(obj: Record<string, unknown>, id: string, label: string): PrepareStage {
+  if (obj.steps !== undefined) {
+    throw new Error(`${label}: use commands (steps was renamed)`);
+  }
   forbidKeys(obj, label, [
     "command",
     "summary",
@@ -113,38 +161,44 @@ function parsePrepareStage(obj: Record<string, unknown>, id: string, label: stri
     "detect",
     "suites",
     "always",
+    "fix",
   ]);
-  const steps = requireArray(obj.steps, `${label}.steps`).map((item, i) =>
-    parseGateCommand(item, `${label}.steps[${i}]`),
+  const commands = requireArray(obj.commands, `${label}.commands`).map((item, i) =>
+    parsePrepareCommand(item, `${label}.commands[${i}]`),
   );
-  return { id, kind: "prepare", steps };
+  return { id, kind: "prepare", commands };
 }
 
 function parseVerifyStage(obj: Record<string, unknown>, id: string, label: string): VerifyStage {
-  forbidKeys(obj, label, ["command", "steps", "summary", "refs", "skip_when", "env"]);
-  if (obj.detect !== "git") {
-    throw new Error(`${label}.detect must be "git"`);
+  for (const key of REMOVED_VERIFY_KEYS) {
+    if (obj[key] !== undefined) {
+      throw new Error(
+        `${label}: ${key} was removed; use a single commands list (run_in_file_change + command://)`,
+      );
+    }
   }
-  const check = requireArray(obj.check, `${label}.check`).map((item, i) =>
-    parseGateCommand(item, `${label}.check[${i}]`),
+  forbidKeys(obj, label, ["command", "summary", "refs", "skip_when", "env", "fix"]);
+  const rawCommands = requireArray(obj.commands, `${label}.commands`);
+  if (rawCommands.length === 0) {
+    throw new Error(`${label}.commands must be non-empty`);
+  }
+  const commands = rawCommands.map((item, i) =>
+    parseVerifyCommand(item, `${label}.commands[${i}]`),
   );
-  const suitesRaw = requireRecord(obj.suites, `${label}.suites`);
-  const suites: Record<string, VerifySuite> = {};
-  for (const [suiteId, value] of Object.entries(suitesRaw)) {
-    suites[suiteId] = parseSuite(value, `${label}.suites.${suiteId}`);
+  const seen = new Set<string>();
+  for (const cmd of commands) {
+    if (seen.has(cmd.id)) {
+      throw new Error(`${label}: duplicate command id "${cmd.id}"`);
+    }
+    seen.add(cmd.id);
   }
-  const always =
-    obj.always === undefined
-      ? []
-      : requireArray(obj.always, `${label}.always`).map((item, i) =>
-          parseGateCommand(item, `${label}.always[${i}]`),
-        );
-  return { id, kind: "verify", check, detect: "git", suites, always };
+  return { id, kind: "verify", commands };
 }
 
 function parseRunStage(obj: Record<string, unknown>, id: string, label: string): RunStage {
   forbidKeys(obj, label, [
     "steps",
+    "commands",
     "summary",
     "refs",
     "skip_when",
@@ -152,6 +206,7 @@ function parseRunStage(obj: Record<string, unknown>, id: string, label: string):
     "detect",
     "suites",
     "always",
+    "fix",
   ]);
   const stage: RunStage = {
     id,
@@ -174,31 +229,83 @@ function forbidKeys(
   }
 }
 
-function parseSuite(raw: unknown, label: string): VerifySuite {
+function parsePrepareCommand(raw: unknown, label: string): GateCommand {
   const obj = requireRecord(raw, label);
-  const suite: VerifySuite = {
-    paths: requireArray(obj.paths, `${label}.paths`).map((p, i) =>
-      requireString(p, `${label}.paths[${i}]`),
-    ),
-  };
+  forbidKeys(obj, label, ["fix", "run_in_file_change", "id", "also", "paths"]);
   if (obj.command !== undefined) {
-    suite.command = requireCommand(obj.command, `${label}.command`);
+    const argv = requireCommand(obj.command, `${label}.command`);
+    if (argv.some(isCommandRef)) {
+      throw new Error(`${label}.command: command:// refs are only allowed under verify`);
+    }
   }
-  if (obj.also !== undefined) {
-    suite.also = requireArray(obj.also, `${label}.also`).map((a, i) =>
-      requireString(a, `${label}.also[${i}]`),
-    );
-  }
-  if (suite.command === undefined && (suite.also === undefined || suite.also.length === 0)) {
-    throw new Error(`${label}: set command and/or also`);
-  }
-  if (obj.env !== undefined) suite.env = requireStringRecord(obj.env, `${label}.env`);
-  if (obj.name !== undefined) suite.name = requireString(obj.name, `${label}.name`);
-  return suite;
+  return parseGateCommand(obj, label);
 }
 
-function parseGateCommand(raw: unknown, label: string): GateCommand {
+function parseVerifyCommand(raw: unknown, label: string): VerifyCommand {
   const obj = requireRecord(raw, label);
+  forbidKeys(obj, label, ["fix", "also", "paths", "steps"]);
+  const name = requireString(obj.name, `${label}.name`);
+  const id =
+    obj.id === undefined ? name : requireString(obj.id, `${label}.id`);
+  const command = requireCommand(obj.command, `${label}.command`);
+  assertCommandArgvShape(command, label);
+
+  const cmd: VerifyCommand = { id, name, command };
+  if (obj.run_in_file_change !== undefined) {
+    const paths = requireArray(obj.run_in_file_change, `${label}.run_in_file_change`).map(
+      (p, i) => requireString(p, `${label}.run_in_file_change[${i}]`),
+    );
+    if (paths.length === 0) {
+      throw new Error(`${label}.run_in_file_change must be non-empty when set`);
+    }
+    cmd.run_in_file_change = paths;
+  }
+  if (obj.env !== undefined) {
+    if (isRefOnlyCommand(command)) {
+      throw new Error(`${label}: env is not allowed on command:// composition entries`);
+    }
+    cmd.env = requireStringRecord(obj.env, `${label}.env`);
+  }
+  if (obj.showOutputOnSuccess !== undefined) {
+    if (typeof obj.showOutputOnSuccess !== "boolean") {
+      throw new Error(`${label}.showOutputOnSuccess must be a boolean`);
+    }
+    if (isRefOnlyCommand(command)) {
+      throw new Error(
+        `${label}: showOutputOnSuccess is not allowed on command:// composition entries`,
+      );
+    }
+    cmd.showOutputOnSuccess = obj.showOutputOnSuccess;
+  }
+  if (obj.onMissing !== undefined) {
+    if (obj.onMissing !== "warn") {
+      throw new Error(`${label}.onMissing must be "warn"`);
+    }
+    if (isRefOnlyCommand(command)) {
+      throw new Error(`${label}: onMissing is not allowed on command:// composition entries`);
+    }
+    cmd.onMissing = "warn";
+  }
+  return cmd;
+}
+
+function assertCommandArgvShape(command: readonly string[], label: string): void {
+  const refs = command.filter(isCommandRef);
+  if (refs.length === 0) return;
+  if (refs.length !== command.length) {
+    throw new Error(
+      `${label}.command: mix of argv tokens and ${COMMAND_REF_PREFIX} refs is not allowed`,
+    );
+  }
+  for (const token of refs) {
+    const refId = commandRefId(token);
+    if (refId.length === 0) {
+      throw new Error(`${label}.command: ${COMMAND_REF_PREFIX} id must be non-empty`);
+    }
+  }
+}
+
+function parseGateCommand(obj: Record<string, unknown>, label: string): GateCommand {
   const cmd: GateCommand = { command: requireCommand(obj.command, `${label}.command`) };
   if (obj.name !== undefined) cmd.name = requireString(obj.name, `${label}.name`);
   if (obj.env !== undefined) cmd.env = requireStringRecord(obj.env, `${label}.env`);
@@ -209,7 +316,7 @@ function parseGateCommand(raw: unknown, label: string): GateCommand {
     cmd.showOutputOnSuccess = obj.showOutputOnSuccess;
   }
   if (obj.fix !== undefined) {
-    cmd.fix = requireCommand(obj.fix, `${label}.fix`);
+    throw new Error(`${label}: fix was removed; use evolving prepare for write-side commands`);
   }
   if (obj.onMissing !== undefined) {
     if (obj.onMissing !== "warn") {

@@ -1,9 +1,11 @@
 import type { EvolvingConfig, GateCommand, RunReport } from "./types.ts";
 import {
+  alwaysOnIds,
   changedPathsFromGit,
-  invalidSuiteArgs,
-  resolveSuiteIds,
-  suiteIdsFromConfig,
+  commandIdsFromStage,
+  invalidCommandArgs,
+  resolveSelectedCommandIds,
+  runnableSelectedIds,
 } from "./detect.ts";
 import { emitRun } from "./emit.ts";
 import { buildRunReport, createReporter, timestamp } from "./report.ts";
@@ -15,13 +17,13 @@ export async function runVerify(
   config: EvolvingConfig,
   args: readonly string[],
 ): Promise<RunReport> {
-  const checkOnly = args.includes("--check");
-  const suiteArgs = args.filter((arg) => !arg.startsWith("--"));
-  const gate = verifyStage(config);
-  const suiteIds = suiteIdsFromConfig(gate);
-  const invalid = invalidSuiteArgs(suiteArgs, suiteIds);
+  const commandArgs = args.filter((arg) => !arg.startsWith("--"));
+  // Accept legacy no-op flags so older habits do not break argv parsing.
+  const stage = verifyStage(config);
+  const commandIds = commandIdsFromStage(stage);
+  const invalid = invalidCommandArgs(commandArgs, commandIds);
   if (invalid.length > 0) {
-    const message = `Unknown argument(s): ${invalid.join(", ")}. Expected ${[...suiteIds, "all"].join(", ")}, --check, --e2e.`;
+    const message = `Unknown argument(s): ${invalid.join(", ")}. Expected ${[...commandIds, "all"].join(", ")}.`;
     return emitRun(
       cwd,
       buildRunReport({
@@ -39,10 +41,9 @@ export async function runVerify(
         ],
         exitCode: 2,
         verify: {
-          check_only: checkOnly,
           changed_paths_count: 0,
-          selected_suites: [],
-          always: [],
+          selected: [],
+          always_on: [],
         },
       }),
     );
@@ -54,41 +55,27 @@ export async function runVerify(
   installSignalHandlers(children);
   const { failed, steps, report } = createReporter(cwd, stamp);
 
-  for (const step of gate.check) {
+  const changed = changedPathsFromGit(cwd);
+  const selected = resolveSelectedCommandIds(stage, commandArgs, changed);
+  const runnable = runnableSelectedIds(stage, selected);
+  const alwaysOn = alwaysOnIds(stage, selected);
+  const byId = new Map(stage.commands.map((c) => [c.id, c]));
+
+  for (const id of runnable) {
+    const cmd = byId.get(id);
+    if (!cmd) continue;
+    const step: GateCommand = {
+      name: cmd.id,
+      command: cmd.command,
+      env: cmd.env,
+      showOutputOnSuccess: cmd.showOutputOnSuccess,
+      onMissing: cmd.onMissing,
+    };
     const result = await runCommand(step);
-    report(step.name ?? step.command.join(" "), [result], {
-      showOutputOnSuccess: step.showOutputOnSuccess === true,
-      fix: step.fix,
-      onMissing: step.onMissing,
+    report(cmd.id, [result], {
+      showOutputOnSuccess: cmd.showOutputOnSuccess === true,
+      onMissing: cmd.onMissing,
     });
-  }
-
-  let changedPathsCount = 0;
-  let selected: string[] = [];
-  const alwaysNames: string[] = [];
-
-  if (!checkOnly) {
-    const changed = changedPathsFromGit(cwd);
-    changedPathsCount = changed.length;
-    selected = resolveSuiteIds(gate, suiteArgs, changed);
-    for (const id of selected) {
-      const suite = gate.suites[id];
-      if (!suite?.command) continue;
-      const step: GateCommand = {
-        name: suite.name ?? id,
-        command: suite.command,
-        env: suite.env,
-      };
-      report(step.name ?? id, [await runCommand(step)]);
-    }
-    for (const step of gate.always ?? []) {
-      alwaysNames.push(step.name ?? step.command.join(" "));
-      const result = await runCommand(step);
-      report(step.name ?? step.command.join(" "), [result], {
-        showOutputOnSuccess: step.showOutputOnSuccess === true,
-        onMissing: step.onMissing,
-      });
-    }
   }
 
   return emitRun(
@@ -99,10 +86,9 @@ export async function runVerify(
       failed,
       steps,
       verify: {
-        check_only: checkOnly,
-        changed_paths_count: changedPathsCount,
-        selected_suites: selected,
-        always: alwaysNames,
+        changed_paths_count: changed.length,
+        selected: runnable,
+        always_on: alwaysOn,
       },
     }),
   );

@@ -12,7 +12,7 @@ export function buildStagesView(config: EvolvingConfig): StagesView {
     stages,
     first: stages[0] ?? null,
     progressive:
-      "Minimal id+kind map + first only — no panorama. Follow top-down; machine detail via explain prepare|verify|check; guidance body via Read evolving.yml for the current step.",
+      "Minimal id+kind map + first only — no panorama. Follow top-down; machine detail via explain prepare|verify; guidance body via Read evolving.yml for the current step.",
   };
 }
 

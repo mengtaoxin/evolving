@@ -1,20 +1,24 @@
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runCheck } from "../src/check.ts";
 import { lastRunPath, logsDir } from "../src/last-run.ts";
 import { loadConfig } from "../src/load-config.ts";
 import { runPrepare } from "../src/prepare.ts";
 import { MAX_LOG_BYTES, outputPreview, writeStepLog } from "../src/report.ts";
 import { buildStatus } from "../src/status.ts";
+import { runVerify } from "../src/verify.ts";
 import { minimalV2Yaml } from "./helpers/v2-yaml.ts";
 
-function writeMinimal(dir: string, checkYaml: string, prepareStepsYaml?: string): void {
+function writeMinimal(
+  dir: string,
+  verifyCommandsYaml: string,
+  prepareCommandsYaml?: string,
+): void {
   writeFileSync(
     join(dir, "evolving.yml"),
     minimalV2Yaml({
-      checkYaml,
-      ...(prepareStepsYaml !== undefined ? { prepareStepsYaml } : {}),
+      verifyCommandsYaml,
+      ...(prepareCommandsYaml !== undefined ? { prepareCommandsYaml } : {}),
     }),
   );
 }
@@ -24,7 +28,8 @@ describe("json RunReport", () => {
     const dir = mkdtempSync(join(tmpdir(), "evolving-json-prepare-"));
     writeMinimal(
       dir,
-      `      - command: ["true"]
+      `      - name: ok
+        command: ["true"]
 `,
       `      - name: touch
         command: ["node", "-e", "require('node:fs').writeFileSync('ok.txt','1')"]
@@ -66,13 +71,12 @@ describe("json RunReport", () => {
     expect(saved.last_run_path).toBe(lastRunPath(dir));
   });
 
-  it("includes fix and .evolving/logs path on failed check steps", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "evolving-json-fix-"));
+  it("includes .evolving/logs path on failed verify steps and suggests prepare", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "evolving-json-fail-"));
     writeMinimal(
       dir,
       `      - name: format:check
         command: ["node", "-e", "console.error('Error: boom'); process.exit(1)"]
-        fix: ["npm", "run", "format"]
 `,
     );
     const lines: string[] = [];
@@ -82,30 +86,29 @@ describe("json RunReport", () => {
     };
     let report;
     try {
-      report = await runCheck(dir, loadConfig(dir));
+      report = await runVerify(dir, loadConfig(dir), []);
     } finally {
       console.log = original;
     }
     expect(report.ok).toBe(false);
     expect(report.failed).toContain("format:check");
     expect(report.failure[0]?.name).toBe("format:check");
-    expect(report.failure[0]?.fix).toEqual(["npm", "run", "format"]);
+    expect(report.failure[0]).not.toHaveProperty("fix");
     expect(report.failure[0]?.log?.startsWith(logsDir(dir) + "/")).toBe(true);
     expect(report.failure[0]?.log?.endsWith("-format-check.log")).toBe(true);
     expect(existsSync(report.failure[0]!.log!)).toBe(true);
     expect(readFileSync(report.failure[0]!.log!, "utf8")).toContain("Error: boom");
     expect(report.last_run_path).toBe(lastRunPath(dir));
-    expect(report.steps[0]?.fix).toEqual(["npm", "run", "format"]);
     expect(report.steps[0]?.log).toBe(report.failure[0]?.log);
     expect(report.steps[0]?.output_preview).toMatch(/Error/);
 
     const printed = JSON.parse(lines[0] as string);
-    expect(printed.failure[0]?.fix).toEqual(["npm", "run", "format"]);
+    expect(printed.failure[0]).not.toHaveProperty("fix");
     expect(printed.last_run_path).toBe(lastRunPath(dir));
 
     const status = buildStatus(dir);
     expect(status.state).toBe("failed");
-    expect(status.next[0]).toBe("prepare");
+    expect(status.next).toEqual(["prepare", "verify"]);
     expect(status.last_run).toBeUndefined();
     expect(status.failure?.[0]?.name).toBe("format:check");
     expect(status.failure?.[0]?.log).toBe(report.failure[0]?.log);

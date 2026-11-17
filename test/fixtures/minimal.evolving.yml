@@ -16,7 +16,7 @@ stages:
 
   - id: prepare
     kind: prepare
-    steps:
+    commands:
       - name: format
         command: ["npm", "run", "format"]
       - name: lint:fix
@@ -24,32 +24,26 @@ stages:
 
   - id: verify
     kind: verify
-    check:
+    commands:
       - name: format:check
         command: ["npm", "run", "format:check"]
-        fix: ["npm", "run", "format"]
       - name: lint
         command: ["npm", "run", "lint"]
-        fix: ["npm", "run", "lint:fix"]
         showOutputOnSuccess: true
       - name: type-check
         command: ["npm", "run", "type-check"]
-    detect: git
-    suites:
-      lib:
-        paths: ["packages/lib/"]
+      - name: test:lib
         command: ["npm", "run", "test:lib"]
-      app:
-        paths: ["packages/app/"]
+        run_in_file_change: ["packages/lib/"]
+      - name: test:app
         command: ["npm", "run", "test:app"]
-      shared:
-        paths: ["packages/shared/"]
-        also: [lib, app]
+        run_in_file_change: ["packages/app/"]
+      - name: test:shared
         command: ["npm", "run", "test:shared"]
-      deps:
-        paths: ["package.json", "package-lock.json"]
-        also: [lib, app]
-    always:
+        run_in_file_change: ["packages/shared/"]
+      - name: deps
+        command: ["command://test:lib", "command://test:app"]
+        run_in_file_change: ["package.json", "package-lock.json"]
       - name: test:e2e
         command: ["npm", "run", "test:e2e"]
 

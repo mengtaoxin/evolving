@@ -1,7 +1,6 @@
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runCheck } from "../src/check.ts";
 import { lastRunPath, writeLastRun } from "../src/last-run.ts";
 import { loadConfig } from "../src/load-config.ts";
 import { buildStatus, printStatus } from "../src/status.ts";
@@ -22,26 +21,25 @@ describe("status", () => {
     });
   });
 
-  it("suggests prepare then check when a fix companion failed", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "evolving-status-fix-"));
+  it("suggests prepare then verify when an always-on command failed", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "evolving-status-always-fail-"));
     writeFileSync(
       join(dir, "evolving.yml"),
       minimalV2Yaml({
-        checkYaml: `      - name: lint
-        command: ["node", "-e", "process.exit(1)"]
-        fix: ["npm", "run", "lint:fix"]`,
+        verifyCommandsYaml: `      - name: lint
+        command: ["node", "-e", "process.exit(1)"]`,
       }),
     );
     const original = console.log;
     console.log = () => {};
     try {
-      await runCheck(dir, loadConfig(dir));
+      await runVerify(dir, loadConfig(dir), []);
     } finally {
       console.log = original;
     }
     const status = buildStatus(dir);
     expect(status.state).toBe("failed");
-    expect(status.next).toEqual(["prepare", "check"]);
+    expect(status.next).toEqual(["prepare", "verify"]);
     expect(status.last_run).toBeUndefined();
     expect(status.failure?.[0]?.name).toBe("lint");
     expect(status.last_run_path).toBe(lastRunPath(dir));
@@ -52,14 +50,14 @@ describe("status", () => {
     writeFileSync(
       join(dir, "evolving.yml"),
       minimalV2Yaml({
-        checkYaml: `      - name: lint
+        verifyCommandsYaml: `      - name: lint
         command: ["node", "-e", "process.exit(1)"]`,
       }),
     );
     const original = console.log;
     console.log = () => {};
     try {
-      await runCheck(dir, loadConfig(dir));
+      await runVerify(dir, loadConfig(dir), []);
     } finally {
       console.log = original;
     }
@@ -68,11 +66,11 @@ describe("status", () => {
     expect(slim.failed).toContain("lint");
 
     const full = buildStatus(dir, { full: true });
-    expect(full.last_run?.command).toBe("check");
+    expect(full.last_run?.command).toBe("verify");
     expect(full.last_run?.failed).toContain("lint");
   });
 
-  it("always-gate failure suggests full verify without selected_suites", () => {
+  it("always-on failure suggests prepare then full verify", () => {
     const dir = mkdtempSync(join(tmpdir(), "evolving-status-always-"));
     const report: RunReport = {
       evolving: 1,
@@ -81,24 +79,23 @@ describe("status", () => {
       exit_code: 1,
       seconds: 1,
       steps: [
-        { name: "lib", ok: true, code: 0, seconds: 0.1 },
+        { name: "test:lib", ok: true, code: 0, seconds: 0.1 },
         { name: "smoke", ok: false, code: 1, seconds: 0.2, log: "/tmp/x.log" },
       ],
       failed: ["smoke"],
       failure: [{ name: "smoke", log: "/tmp/x.log" }],
       verify: {
-        check_only: false,
         changed_paths_count: 1,
-        selected_suites: ["lib"],
-        always: ["smoke"],
+        selected: ["test:lib", "smoke"],
+        always_on: ["smoke"],
       },
     };
     writeLastRun(dir, report);
     const status = buildStatus(dir);
-    expect(status.next).toEqual(["verify"]);
+    expect(status.next).toEqual(["prepare", "verify"]);
   });
 
-  it("suite-only failure may replay selected_suites", () => {
+  it("path-selected failure may replay selected ids", () => {
     const dir = mkdtempSync(join(tmpdir(), "evolving-status-suite-"));
     const report: RunReport = {
       evolving: 1,
@@ -106,19 +103,18 @@ describe("status", () => {
       ok: false,
       exit_code: 1,
       seconds: 1,
-      steps: [{ name: "lib", ok: false, code: 1, seconds: 0.2 }],
-      failed: ["lib"],
-      failure: [{ name: "lib" }],
+      steps: [{ name: "test:lib", ok: false, code: 1, seconds: 0.2 }],
+      failed: ["test:lib"],
+      failure: [{ name: "test:lib" }],
       verify: {
-        check_only: false,
         changed_paths_count: 1,
-        selected_suites: ["lib"],
-        always: ["smoke"],
+        selected: ["test:lib", "smoke"],
+        always_on: ["smoke"],
       },
     };
     writeLastRun(dir, report);
     const status = buildStatus(dir);
-    expect(status.next).toEqual(["verify", "lib"]);
+    expect(status.next).toEqual(["verify", "test:lib"]);
   });
 
   it("printStatus emits one JSON object", () => {
@@ -139,7 +135,7 @@ describe("status", () => {
 });
 
 describe("verify always next integration", () => {
-  it("failed always gate yields next verify without suite ids", async () => {
+  it("failed always-on gate yields prepare then verify without command ids", async () => {
     const dir = mkdtempSync(join(tmpdir(), "evolving-verify-always-"));
     writeFileSync(
       join(dir, "evolving.yml"),
@@ -149,13 +145,10 @@ after_edit: [prepare, verify]
 stages:
   - id: verify
     kind: verify
-    check: []
-    detect: git
-    suites:
-      lib:
-        paths: ["lib/"]
+    commands:
+      - name: test:lib
         command: ["true"]
-    always:
+        run_in_file_change: ["lib/"]
       - name: smoke
         command: ["node", "-e", "process.exit(1)"]
 `,
@@ -163,13 +156,13 @@ stages:
     const original = console.log;
     console.log = () => {};
     try {
-      await runVerify(dir, loadConfig(dir), ["lib"]);
+      await runVerify(dir, loadConfig(dir), ["test:lib"]);
     } finally {
       console.log = original;
     }
     const status = buildStatus(dir);
     expect(status.state).toBe("failed");
     expect(status.failed).toContain("smoke");
-    expect(status.next).toEqual(["verify"]);
+    expect(status.next).toEqual(["prepare", "verify"]);
   });
 });

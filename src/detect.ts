@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
-import type { VerifyGate, VerifySuite } from "./types.ts";
+import type { VerifyCommand, VerifyStage } from "./types.ts";
+import { commandRefId, isRefOnlyCommand } from "./types.ts";
 
 /** True when a changed path matches a suite path pattern. */
 export function pathMatches(changedPath: string, pattern: string): boolean {
@@ -25,50 +26,97 @@ export function changedPathsFromGit(cwd: string): string[] {
   return paths;
 }
 
-export function suiteIdsFromConfig(gate: VerifyGate): string[] {
-  return Object.keys(gate.suites);
+export function commandIdsFromStage(stage: VerifyStage): string[] {
+  return stage.commands.map((c) => c.id);
 }
 
-export function invalidSuiteArgs(
-  suiteArgs: readonly string[],
-  suiteIds: readonly string[],
+export function invalidCommandArgs(
+  args: readonly string[],
+  commandIds: readonly string[],
 ): string[] {
-  const allowed = new Set([...suiteIds, "all"]);
-  return suiteArgs.filter((arg) => !allowed.has(arg));
+  const allowed = new Set([...commandIds, "all"]);
+  return args.filter((arg) => !arg.startsWith("--") && !allowed.has(arg));
 }
 
 /**
- * Suites selected for verify.
- * - Explicit args: named suites (or every suite for `all`). `also` is not applied.
- * - Git detect: suites whose paths match; then expand `also` edges once.
+ * Command ids selected for verify (composition entries included until expand).
+ * - Explicit args: named ids (or every id for `all`). Always-on items still included.
+ * - Git detect: always-on + path matches; then expand command:// edges.
  */
-export function resolveSuiteIds(
-  gate: VerifyGate,
-  suiteArgs: readonly string[],
+export function resolveSelectedCommandIds(
+  stage: VerifyStage,
+  commandArgs: readonly string[],
   changedPaths: readonly string[],
 ): string[] {
-  const ids = suiteIdsFromConfig(gate);
-  if (suiteArgs.length > 0) {
-    if (suiteArgs.includes("all")) return ids;
-    return ids.filter((id) => suiteArgs.includes(id));
-  }
-
+  const ids = commandIdsFromStage(stage);
+  const byId = new Map(stage.commands.map((c) => [c.id, c]));
   const selected = new Set<string>();
-  for (const [id, suite] of Object.entries(gate.suites)) {
-    if (suiteMatchesPaths(suite, changedPaths)) selected.add(id);
-  }
-  for (const id of [...selected]) {
-    const also = gate.suites[id]?.also;
-    if (!also) continue;
-    for (const other of also) {
-      if (gate.suites[other]) selected.add(other);
+
+  if (commandArgs.includes("all")) {
+    for (const id of ids) selected.add(id);
+  } else if (commandArgs.length > 0) {
+    for (const cmd of stage.commands) {
+      if (!cmd.run_in_file_change) selected.add(cmd.id);
+    }
+    for (const arg of commandArgs) {
+      if (byId.has(arg)) selected.add(arg);
+    }
+  } else {
+    for (const cmd of stage.commands) {
+      if (!cmd.run_in_file_change) {
+        selected.add(cmd.id);
+        continue;
+      }
+      if (pathsMatch(cmd, changedPaths)) selected.add(cmd.id);
     }
   }
+
+  expandCommandRefs(selected, byId);
   return ids.filter((id) => selected.has(id));
 }
 
-function suiteMatchesPaths(suite: VerifySuite, changedPaths: readonly string[]): boolean {
+/** Ids that will actually be spawned (excludes command:// composition entries). */
+export function runnableSelectedIds(
+  stage: VerifyStage,
+  selectedIds: readonly string[],
+): string[] {
+  const byId = new Map(stage.commands.map((c) => [c.id, c]));
+  return selectedIds.filter((id) => {
+    const cmd = byId.get(id);
+    return cmd !== undefined && !isRefOnlyCommand(cmd.command);
+  });
+}
+
+export function alwaysOnIds(stage: VerifyStage, selectedIds: readonly string[]): string[] {
+  const byId = new Map(stage.commands.map((c) => [c.id, c]));
+  return selectedIds.filter((id) => {
+    const cmd = byId.get(id);
+    return cmd !== undefined && !cmd.run_in_file_change && !isRefOnlyCommand(cmd.command);
+  });
+}
+
+function pathsMatch(cmd: VerifyCommand, changedPaths: readonly string[]): boolean {
+  const patterns = cmd.run_in_file_change;
+  if (!patterns) return false;
   return changedPaths.some((changed) =>
-    suite.paths.some((pattern) => pathMatches(changed, pattern)),
+    patterns.some((pattern) => pathMatches(changed, pattern)),
   );
+}
+
+function expandCommandRefs(
+  selected: Set<string>,
+  byId: ReadonlyMap<string, VerifyCommand>,
+): void {
+  const queue = [...selected];
+  while (queue.length > 0) {
+    const id = queue.pop() as string;
+    const cmd = byId.get(id);
+    if (!cmd || !isRefOnlyCommand(cmd.command)) continue;
+    for (const token of cmd.command) {
+      const refId = commandRefId(token);
+      if (selected.has(refId)) continue;
+      selected.add(refId);
+      queue.push(refId);
+    }
+  }
 }

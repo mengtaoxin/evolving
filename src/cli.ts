@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import { runCheck } from "./check.ts";
 import { runFinish } from "./finish.ts";
 import { printExplain, resolveExplain } from "./explain.ts";
 import { loadConfig } from "./load-config.ts";
@@ -13,14 +12,13 @@ const USAGE = `Usage:
   evolving explain [topic] [--config path]
   evolving stages [--config path]
   evolving prepare [--config path]
-  evolving check [--config path]
-  evolving verify [suite|all...] [--check] [--e2e] [--config path]
+  evolving verify [command-id|all...] [--e2e] [--config path]
   evolving finish [--config path]
   evolving status [--full] [--config path]
   evolving agent-contract   # alias: explain contract
 
 For agents: evolving explain (sole protocol source).
-prepare may write; check and verify are read-only.
+prepare may write; verify is read-only.
 stdout is always one JSON object.
 `;
 
@@ -56,6 +54,18 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (command === "check") {
+    printJson({
+      evolving: 1,
+      ok: false,
+      exit_code: 2,
+      error:
+        "evolving check was removed; use evolving verify (always-on commands have no run_in_file_change)",
+    });
+    process.exitCode = 2;
+    return;
+  }
+
   let config;
   try {
     config = loadConfig(cwd, configFlag);
@@ -76,9 +86,6 @@ async function main(): Promise<void> {
       return;
     case "prepare":
       process.exitCode = (await runPrepare(cwd, config)).exit_code;
-      return;
-    case "check":
-      process.exitCode = (await runCheck(cwd, config)).exit_code;
       return;
     case "verify":
       process.exitCode = (await runVerify(cwd, config, rest)).exit_code;

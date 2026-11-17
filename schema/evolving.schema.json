@@ -42,16 +42,41 @@
           "additionalProperties": { "type": "string" }
         },
         "showOutputOnSuccess": { "type": "boolean" },
-        "fix": {
-          "type": "array",
-          "minItems": 1,
-          "items": { "type": "string", "minLength": 1 },
-          "description": "Write-side companion printed on check/verify failure; not executed by those commands."
-        },
         "onMissing": {
           "const": "warn",
           "description": "If the executable is not on PATH (spawn ENOENT), warn and continue; other failures still fail the gate."
         }
+      }
+    },
+    "verifyCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "command"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Stable id for CLI selection and command:// refs. Defaults to name when omitted."
+        },
+        "command": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Real argv, or only command://id refs that expand to other verify commands."
+        },
+        "run_in_file_change": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Git path patterns; omit to always run this command on verify."
+        },
+        "env": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "showOutputOnSuccess": { "type": "boolean" },
+        "onMissing": { "const": "warn" }
       }
     },
     "guidanceStage": {
@@ -76,37 +101,29 @@
     "prepareStage": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "kind", "steps"],
+      "required": ["id", "kind", "commands"],
       "properties": {
         "id": { "type": "string", "minLength": 1 },
         "kind": { "const": "prepare" },
-        "steps": {
+        "commands": {
           "type": "array",
           "items": { "$ref": "#/$defs/gateCommand" },
-          "description": "Write-allowed steps (format / lint:fix). Run via evolving prepare; never by check/verify."
+          "description": "Write-allowed commands (format / lint:fix). Run via evolving prepare; never by verify."
         }
       }
     },
     "verifyStage": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "kind", "check", "detect", "suites"],
+      "required": ["id", "kind", "commands"],
       "properties": {
         "id": { "type": "string", "minLength": 1 },
         "kind": { "const": "verify" },
-        "check": {
+        "commands": {
           "type": "array",
-          "items": { "$ref": "#/$defs/gateCommand" },
-          "description": "Static read-only gates; also the first phase of evolving verify (check ⊂ verify)."
-        },
-        "detect": { "const": "git" },
-        "suites": {
-          "type": "object",
-          "additionalProperties": { "$ref": "#/$defs/verifySuite" }
-        },
-        "always": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/gateCommand" }
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/verifyCommand" },
+          "description": "Read-only commands in order. Omit run_in_file_change to always run; otherwise select via git paths. Composition via command://id."
         }
       }
     },
@@ -126,37 +143,6 @@
           "type": "object",
           "additionalProperties": { "type": "string" }
         }
-      }
-    },
-    "verifySuite": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["paths"],
-      "anyOf": [
-        { "required": ["command"] },
-        { "required": ["also"] }
-      ],
-      "properties": {
-        "paths": {
-          "type": "array",
-          "minItems": 1,
-          "items": { "type": "string", "minLength": 1 }
-        },
-        "command": {
-          "type": "array",
-          "minItems": 1,
-          "items": { "type": "string", "minLength": 1 }
-        },
-        "also": {
-          "type": "array",
-          "minItems": 1,
-          "items": { "type": "string", "minLength": 1 }
-        },
-        "env": {
-          "type": "object",
-          "additionalProperties": { "type": "string" }
-        },
-        "name": { "type": "string", "minLength": 1 }
       }
     }
   }

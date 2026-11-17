@@ -78,7 +78,6 @@ export function createReporter(
     results: StepResult[],
     options?: {
       showOutputOnSuccess?: boolean;
-      fix?: readonly string[];
       onMissing?: "warn";
     },
   ) => void;
@@ -91,11 +90,9 @@ export function createReporter(
     results: StepResult[],
     {
       showOutputOnSuccess = false,
-      fix,
       onMissing,
     }: {
       showOutputOnSuccess?: boolean;
-      fix?: readonly string[];
       onMissing?: "warn";
     } = {},
   ): void {
@@ -112,7 +109,6 @@ export function createReporter(
         code: result.code,
         seconds: result.seconds,
         log,
-        ...(fix && isBad ? { fix: [...fix] } : {}),
         ...(attachPreview ? { output_preview: outputPreview(result.output) } : {}),
         ...(result.missingExecutable ? { missing_executable: true } : {}),
       };
@@ -132,7 +128,6 @@ export function buildFailureSummaries(
   return failed.map((name) => {
     const step = byName.get(name);
     const summary: FailureSummary = { name };
-    if (step?.fix) summary.fix = [...step.fix];
     if (step?.log) summary.log = step.log;
     if (step?.output_preview) summary.output_preview = step.output_preview;
     return summary;

@@ -23,7 +23,8 @@ describe("agent contract", () => {
     expect(text).toContain(".evolving/logs/");
     expect(text).toMatch(/do not re-run to re-read/i);
     expect(text).toMatch(/do not duplicate/i);
-    expect(text).toMatch(/check ⊂ verify|check is nested/i);
+    expect(text).toMatch(/run_in_file_change|command:\/\//i);
+    expect(text).not.toMatch(/check ⊂ verify/i);
     expect(text).toMatch(/no CLI panorama/i);
     expect(text).toMatch(/Read evolving\.yml for the current guidance step/i);
     expect(text).not.toMatch(/evolving stages.*full|full snapshot.*evolving stages/i);

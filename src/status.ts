@@ -58,25 +58,25 @@ function failuresFrom(last: RunReport): FailureSummary[] {
 }
 
 function suggestNext(last: RunReport): string[] {
-  const failedSteps = last.steps.filter((s) => !s.ok);
-  const withFix = failedSteps.filter((s) => s.fix && s.fix.length > 0);
-  if (withFix.length > 0 || last.command === "prepare") {
-    if (last.command === "prepare") return ["prepare"];
-    return ["prepare", last.command, ...verifyResumeArgs(last, failedSteps)];
-  }
+  if (last.command === "prepare") return ["prepare"];
   if (last.command === "verify") {
-    return ["verify", ...verifyResumeArgs(last, failedSteps)];
+    const failedSteps = last.steps.filter((s) => !s.ok);
+    const alwaysOn = new Set(last.verify?.always_on ?? []);
+    const alwaysFailed = failedSteps.some((s) => alwaysOn.has(s.name));
+    const resume = verifyResumeArgs(last, failedSteps);
+    if (alwaysFailed) return ["prepare", "verify", ...resume];
+    return ["verify", ...resume];
   }
+  if (last.command === "finish") return ["finish"];
   return [last.command];
 }
 
-/** Suite args for resume; omit when an always gate failed (full verify). */
+/** Command ids for resume; omit when an always-on gate failed (full verify). */
 function verifyResumeArgs(last: RunReport, failedSteps: RunReport["steps"]): string[] {
   if (last.command !== "verify" || !last.verify) return [];
-  if (last.verify.check_only) return ["--check"];
-  const alwaysNames = new Set(last.verify.always);
-  if (failedSteps.some((s) => alwaysNames.has(s.name))) {
+  const alwaysOn = new Set(last.verify.always_on);
+  if (failedSteps.some((s) => alwaysOn.has(s.name))) {
     return [];
   }
-  return [...last.verify.selected_suites];
+  return failedSteps.map((s) => s.name).filter((name) => last.verify?.selected.includes(name));
 }

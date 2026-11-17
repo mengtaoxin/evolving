@@ -59,11 +59,21 @@ describe("explain", () => {
       "docs",
     ]);
     expect(report.project?.after_edit).toEqual(["prepare", "verify"]);
-    expect(report.project?.suite_ids).toEqual(["lib", "app", "shared", "deps"]);
+    expect(report.project?.command_ids).toEqual([
+      "format:check",
+      "lint",
+      "type-check",
+      "test:lib",
+      "test:app",
+      "test:shared",
+      "deps",
+      "test:e2e",
+    ]);
     expect(report.project?.has_prepare).toBe(true);
     expect(report.project?.prepare_count).toBe(2);
-    expect(report.project).not.toHaveProperty("machine_stage_ids");
-    expect(report.project).not.toHaveProperty("guidance_stage_ids");
+    expect(report.project?.always_on_count).toBe(4);
+    expect(report.project).not.toHaveProperty("suite_ids");
+    expect(report.project).not.toHaveProperty("check_count");
     expect(report.next).toEqual(["prepare"]);
     expect(report.detail).toMatchObject({ no_panorama: true });
     expect(String((report.detail as { progressive?: string }).progressive)).toMatch(
@@ -71,7 +81,6 @@ describe("explain", () => {
     );
     const blob = JSON.stringify(report);
     expect(blob).not.toContain("npm run format");
-    expect(blob).not.toContain("test:lib");
     expect(blob).not.toContain("Locate entry files");
     expect(blob).not.toContain("docs/overview.md");
   });
@@ -128,9 +137,11 @@ describe("explain", () => {
     const report = buildExplainTopic("prepare", loadFixture());
     expect(report.topic).toBe("prepare");
     expect(report.how_to_run).toContain("evolving prepare");
-    const steps = (report.detail as { steps: Array<{ name?: string; command: string[] }> }).steps;
-    expect(steps.map((s) => s.name)).toEqual(["format", "lint:fix"]);
-    expect(steps[0]?.command).toEqual(["npm", "run", "format"]);
+    const commands = (
+      report.detail as { commands: Array<{ name?: string; command: string[] }> }
+    ).commands;
+    expect(commands.map((s) => s.name)).toEqual(["format", "lint:fix"]);
+    expect(commands[0]?.command).toEqual(["npm", "run", "format"]);
   });
 
   it("unknown topic fails with exit_code 2 and lists topics", () => {

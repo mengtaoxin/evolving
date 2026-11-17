@@ -1,6 +1,7 @@
 import {
   changedPathsFromGit,
-  resolveSuiteIds,
+  resolveSelectedCommandIds,
+  runnableSelectedIds,
 } from "./detect.ts";
 import { emitRun } from "./emit.ts";
 import { buildRunReport, createReporter, timestamp } from "./report.ts";
@@ -10,7 +11,7 @@ import type { EvolvingConfig, GateCommand, RunReport } from "./types.ts";
 
 /**
  * Run every non-guidance stage in order:
- * prepare steps → verify (check + git suites + always) → kind: run commands.
+ * prepare commands → verify commands (git select + always-on) → kind: run.
  */
 export async function runFinish(cwd: string, config: EvolvingConfig): Promise<RunReport> {
   const stamp = timestamp(new Date());
@@ -21,7 +22,7 @@ export async function runFinish(cwd: string, config: EvolvingConfig): Promise<Ru
 
   for (const stage of machineStages(config)) {
     if (stage.kind === "prepare") {
-      for (const step of stage.steps) {
+      for (const step of stage.commands) {
         const result = await runCommand(step);
         report(step.name ?? step.command.join(" "), [result], {
           showOutputOnSuccess: step.showOutputOnSuccess === true,
@@ -32,31 +33,23 @@ export async function runFinish(cwd: string, config: EvolvingConfig): Promise<Ru
     }
 
     if (stage.kind === "verify") {
-      for (const step of stage.check) {
-        const result = await runCommand(step);
-        report(step.name ?? step.command.join(" "), [result], {
-          showOutputOnSuccess: step.showOutputOnSuccess === true,
-          fix: step.fix,
-          onMissing: step.onMissing,
-        });
-      }
       const changed = changedPathsFromGit(cwd);
-      const selected = resolveSuiteIds(stage, [], changed);
-      for (const id of selected) {
-        const suite = stage.suites[id];
-        if (!suite?.command) continue;
+      const selected = resolveSelectedCommandIds(stage, [], changed);
+      const runnable = runnableSelectedIds(stage, selected);
+      const byId = new Map(stage.commands.map((c) => [c.id, c]));
+      for (const id of runnable) {
+        const cmd = byId.get(id);
+        if (!cmd) continue;
         const step: GateCommand = {
-          name: suite.name ?? id,
-          command: suite.command,
-          env: suite.env,
+          name: cmd.id,
+          command: cmd.command,
+          env: cmd.env,
+          showOutputOnSuccess: cmd.showOutputOnSuccess,
+          onMissing: cmd.onMissing,
         };
-        report(step.name ?? id, [await runCommand(step)]);
-      }
-      for (const step of stage.always ?? []) {
-        const result = await runCommand(step);
-        report(step.name ?? step.command.join(" "), [result], {
-          showOutputOnSuccess: step.showOutputOnSuccess === true,
-          onMissing: step.onMissing,
+        report(cmd.id, [await runCommand(step)], {
+          showOutputOnSuccess: cmd.showOutputOnSuccess === true,
+          onMissing: cmd.onMissing,
         });
       }
       continue;

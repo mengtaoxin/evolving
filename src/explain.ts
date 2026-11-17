@@ -6,7 +6,7 @@ import {
   SKIP_WHEN_VOCABULARY,
 } from "./contract.ts";
 import { printJson } from "./report.ts";
-import { checkSteps, prepareSteps, verifyStage } from "./stages-access.ts";
+import { prepareCommands, verifyStage } from "./stages-access.ts";
 import { buildStatus } from "./status.ts";
 import type {
   EvolvingConfig,
@@ -16,7 +16,9 @@ import type {
   ExplainTopicRef,
   GateCommand,
   StageView,
+  VerifyCommand,
 } from "./types.ts";
+import { isRefOnlyCommand } from "./types.ts";
 
 const AGENT_IO_DETAIL = {
   do: [...AGENT_IO_DO],
@@ -26,8 +28,7 @@ const AGENT_IO_DETAIL = {
 export const EXPLAIN_TOPICS: readonly ExplainTopicRef[] = [
   { id: "contract", summary: "Fixed agent protocol (after_edit, guidance, finish)" },
   { id: "prepare", summary: "Write-allowed prepare stage (format / lint:fix)" },
-  { id: "check", summary: "verify.check subset — read-only static gates" },
-  { id: "verify", summary: "check + git-selected suites + always" },
+  { id: "verify", summary: "Ordered commands: always-on + git path select + command://" },
   { id: "finish", summary: "Run all non-guidance stages in order" },
   { id: "stages", summary: "Minimal timeline map (id+kind) — no panorama" },
   { id: "status", summary: "Resume / recover truncated view from .evolving/last-run.json + logs" },
@@ -71,7 +72,7 @@ export function buildExplainIndex(
       never_pipe: true,
       drill_when: "first time using evolving, or when a specific machine topic is unclear",
       progressive:
-        "index = map (stage_ids) + next first step → act top-down. Drill explain prepare|verify|check for machine detail. Guidance body: Read evolving.yml for the current step only. No CLI dumps the full timeline detail (not explain, not evolving stages).",
+        "index = map (stage_ids) + next first step → act top-down. Drill explain prepare|verify for machine detail. Guidance body: Read evolving.yml for the current step only. No CLI dumps the full timeline detail (not explain, not evolving stages).",
       no_panorama: true,
     },
     next,
@@ -84,14 +85,13 @@ export function buildExplainTopic(
   topic: ExplainTopicId,
   config: EvolvingConfig | null,
 ): ExplainReport {
-  const contract = agentContractFor(config);
   switch (topic) {
     case "contract":
       return topicBase(topic, config, {
         summary:
           "Stable protocol agents must follow. Sole source: evolving explain — do not restate in downstream docs.",
         detail: {
-          contract,
+          contract: agentContractFor(config),
           text: agentContractText(config),
           ...AGENT_IO_DETAIL,
         },
@@ -105,60 +105,33 @@ export function buildExplainTopic(
           "Write-allowed prepare stage. Run after edits, before verify. Prefer this over hand-editing format/lint.",
         detail: {
           writes: true,
-          steps: config ? prepareSteps(config).map(gateDetail) : null,
-          note: "check/verify never run these steps.",
+          commands: config ? prepareCommands(config).map(gateDetail) : null,
+          note: "verify never runs these commands.",
         },
         how_to_run: ["evolving prepare"],
-        see_also: ["check", "verify", "json"],
-      });
-    case "check":
-      return topicBase(topic, config, {
-        summary:
-          "Read-only static gates nested under kind: verify (check ⊂ verify). On failure, use fix companions or evolving prepare.",
-        detail: {
-          readonly: true,
-          nested_under: "verify.check",
-          steps: config ? checkSteps(config).map(gateDetail) : null,
-        },
-        how_to_run: ["evolving check", "evolving verify --check"],
-        see_also: ["prepare", "verify", "json"],
+        see_also: ["verify", "json"],
       });
     case "verify": {
       const gate = config ? verifyStage(config) : null;
       return topicBase(topic, config, {
-        summary: "Runs check, then git-detected suites (or explicit ids), then always.",
+        summary:
+          "Runs verify.commands in order: always-on (no run_in_file_change), git path matches, then expands command:// refs.",
         detail: {
           readonly: true,
-          flow: ["check", "suites(git|args)", "always"],
-          inclusion: "check ⊂ verify",
-          suites: gate
-            ? Object.fromEntries(
-                Object.entries(gate.suites).map(([id, suite]) => [
-                  id,
-                  {
-                    paths: suite.paths,
-                    ...(suite.command ? { command: suite.command } : {}),
-                    ...(suite.also ? { also: suite.also } : {}),
-                    ...(suite.name ? { name: suite.name } : {}),
-                  },
-                ]),
-              )
-            : null,
-          always: gate ? (gate.always ?? []).map(gateDetail) : null,
+          commands: gate ? gate.commands.map(verifyDetail) : null,
           args: {
-            suites: gate ? Object.keys(gate.suites) : [],
-            all: "run every suite",
-            check: "static gates only (--check)",
+            ids: gate ? gate.commands.map((c) => c.id) : [],
+            all: "run every command",
           },
         },
-        how_to_run: ["evolving verify", "evolving verify all", "evolving verify --check"],
-        see_also: ["prepare", "check", "status", "json"],
+        how_to_run: ["evolving verify", "evolving verify all"],
+        see_also: ["prepare", "status", "json"],
       });
     }
     case "finish":
       return topicBase(topic, config, {
         summary:
-          "Runs every non-guidance stage in order: prepare steps, full verify, then kind: run extras. Skips guidance by design.",
+          "Runs every non-guidance stage in order: prepare commands, full verify, then kind: run extras. Skips guidance by design.",
         detail: {
           machine_stages: config
             ? config.stages
@@ -176,14 +149,14 @@ export function buildExplainTopic(
       const rows = config ? config.stages.map((s): StageView => ({ id: s.id, kind: s.kind })) : null;
       return topicBase(topic, config, {
         summary:
-          "Minimal progressive map (id+kind + first). Not a detail dump — no summary/skip_when/refs/commands here. Work top-down; machine detail via explain prepare|verify|check; guidance via Read evolving.yml for the current step.",
+          "Minimal progressive map (id+kind + first). Not a detail dump — no summary/skip_when/refs/commands here. Work top-down; machine detail via explain prepare|verify; guidance via Read evolving.yml for the current step.",
         detail: {
           after_edit: config?.after_edit ?? null,
           stages: rows,
           first: rows?.[0] ?? null,
           no_panorama: true,
           guidance_body: "Read evolving.yml for the current guidance step only",
-          machine_detail: "evolving explain prepare|check|verify",
+          machine_detail: "evolving explain prepare|verify",
         },
         how_to_run: ["evolving explain stages", "evolving stages"],
         see_also: ["guidance", "finish", "prepare", "verify"],
@@ -201,8 +174,8 @@ export function buildExplainTopic(
           full: "status --full embeds last_run (each step.log points at .evolving/logs/)",
           on_truncated_view:
             "evolving status --full, then Read step.log — never head/tail evolving or re-run to re-read",
-          always_next:
-            "If verify.always failed, next is full verify (not selected_suites replay)",
+          always_on_next:
+            "If an always-on verify command failed, next is prepare then full verify",
         },
         how_to_run: ["evolving status", "evolving status --full"],
         see_also: ["json", "prepare", "verify"],
@@ -224,7 +197,6 @@ export function buildExplainTopic(
             "failure",
             "last_run_path",
             "verify",
-            "fix",
             "log",
             "output_preview",
           ],
@@ -327,16 +299,16 @@ function topicBase(
 }
 
 function summarizeProject(config: EvolvingConfig): ExplainProjectSummary {
-  const prepare = prepareSteps(config);
+  const prepare = prepareCommands(config);
   const gate = verifyStage(config);
   return {
     stage_ids: config.stages.map((s) => s.id),
     after_edit: config.after_edit,
-    suite_ids: Object.keys(gate.suites),
+    command_ids: gate.commands.map((c) => c.id),
     has_prepare: prepare.length > 0,
     prepare_count: prepare.length,
-    check_count: gate.check.length,
-    always_count: (gate.always ?? []).length,
+    verify_count: gate.commands.length,
+    always_on_count: gate.commands.filter((c) => !c.run_in_file_change).length,
   };
 }
 
@@ -344,8 +316,18 @@ function gateDetail(step: GateCommand): Record<string, unknown> {
   return {
     ...(step.name ? { name: step.name } : {}),
     command: step.command,
-    ...(step.fix ? { fix: step.fix } : {}),
     ...(step.onMissing ? { onMissing: step.onMissing } : {}),
+  };
+}
+
+function verifyDetail(cmd: VerifyCommand): Record<string, unknown> {
+  return {
+    id: cmd.id,
+    name: cmd.name,
+    command: cmd.command,
+    ...(cmd.run_in_file_change ? { run_in_file_change: cmd.run_in_file_change } : {}),
+    ...(isRefOnlyCommand(cmd.command) ? { composition: true } : {}),
+    ...(cmd.onMissing ? { onMissing: cmd.onMissing } : {}),
   };
 }
 

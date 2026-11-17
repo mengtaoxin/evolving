@@ -23,7 +23,7 @@ export const AGENT_IO_DO = [
   "On failure, use failure[] / output_preview to locate the error; Read step.log for the full text",
   "If the agent view truncated stdout: evolving status (or status --full), then Read step.log — do not re-run to re-read",
   "Start with evolving explain (map + next first step); work top-down — no CLI dumps full stages detail",
-  "Machine detail: explain prepare|check|verify. Guidance body: Read evolving.yml for the current step only",
+  "Machine detail: explain prepare|verify. Guidance body: Read evolving.yml for the current step only",
 ] as const;
 
 const DEFAULT_AFTER_EDIT: readonly AfterEditStep[] = ["prepare", "verify"];
@@ -32,12 +32,12 @@ export const AGENT_CONTRACT: AgentContract = {
   order: DEFAULT_AFTER_EDIT,
   after_edit: DEFAULT_AFTER_EDIT,
   prepare_writes: true,
-  check_verify_readonly: true,
+  verify_readonly: true,
   finish_runs: "non-guidance stages",
   guidance: "agent-evaluated; CLI does not execute",
   protocol_source: "evolving explain",
   do_not_duplicate_in_downstream_docs: true,
-  do_not_hand_edit_when_fix_exists: true,
+  do_not_hand_edit_when_prepare_exists: true,
   skip_when_vocabulary: SKIP_WHEN_VOCABULARY,
 };
 
@@ -67,14 +67,15 @@ point agents at explain — do not duplicate these rules in the consumer repo.
 2. stdout is always one quiet JSON object. Never head/tail/tee/less/jq-pipe it.
 3. kind: guidance stages are for the agent; the CLI never executes them or evaluates skip_when.
    Read evolving.yml for the current guidance step only (summary / refs / skip_when).
-4. evolving finish runs every non-guidance stage in order (prepare steps, verify=check+suites+always, kind: run).
-5. Do not hand-edit formatting/lint when a prepare stage or a check fix companion exists.
-6. On failure, read failure[] / fix / log from the JSON report (or evolving status), then retry.
+4. evolving finish runs every non-guidance stage in order (prepare commands, verify commands, kind: run).
+5. Do not hand-edit formatting/lint when a prepare stage exists — run evolving prepare.
+6. On failure, read failure[] / log from the JSON report (or evolving status), then retry.
 7. Full step output lives under .evolving/logs/ (path on each step.log). If your view
    truncated the JSON, run evolving status --full and Read the log — do not re-run to re-read.
 8. skip_when is agent-evaluated. Recommended tokens: ${SKIP_WHEN_VOCABULARY.join(", ")}.
-9. check is nested under kind: verify (check ⊂ verify). evolving check runs that subset only.
-10. Machine detail on demand: evolving explain prepare|check|verify. evolving stages is a
+9. verify.commands is one ordered list. Omit run_in_file_change to always run; otherwise
+   select via git paths. Composition: command://id refs (no also / check / always / fix).
+10. Machine detail on demand: evolving explain prepare|verify. evolving stages is a
     minimal id+kind map (+ first), not a full timeline dump.
 
 do:

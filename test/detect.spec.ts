@@ -1,27 +1,50 @@
-import { pathMatches, resolveSuiteIds, invalidSuiteArgs } from "../src/detect.ts";
-import type { VerifyGate } from "../src/types.ts";
+import {
+  pathMatches,
+  resolveSelectedCommandIds,
+  invalidCommandArgs,
+  runnableSelectedIds,
+} from "../src/detect.ts";
+import type { VerifyStage } from "../src/types.ts";
 
-const gate: VerifyGate = {
-  detect: "git",
-  suites: {
-    lib: {
-      paths: ["packages/lib/"],
+const stage: VerifyStage = {
+  id: "verify",
+  kind: "verify",
+  commands: [
+    {
+      id: "format:check",
+      name: "format:check",
+      command: ["npm", "run", "format:check"],
+    },
+    {
+      id: "test:lib",
+      name: "test:lib",
       command: ["npm", "run", "test:lib"],
+      run_in_file_change: ["packages/lib/"],
     },
-    app: {
-      paths: ["packages/app/"],
+    {
+      id: "test:app",
+      name: "test:app",
       command: ["npm", "run", "test:app"],
+      run_in_file_change: ["packages/app/"],
     },
-    shared: {
-      paths: ["packages/shared/"],
-      also: ["lib", "app"],
+    {
+      id: "test:shared",
+      name: "test:shared",
       command: ["npm", "run", "test:shared"],
+      run_in_file_change: ["packages/shared/"],
     },
-    deps: {
-      paths: ["package.json", "package-lock.json"],
-      also: ["lib", "app"],
+    {
+      id: "deps",
+      name: "deps",
+      command: ["command://test:lib", "command://test:app"],
+      run_in_file_change: ["package.json", "package-lock.json"],
     },
-  },
+    {
+      id: "test:e2e",
+      name: "test:e2e",
+      command: ["npm", "run", "test:e2e"],
+    },
+  ],
 };
 
 describe("pathMatches", () => {
@@ -33,28 +56,45 @@ describe("pathMatches", () => {
   });
 });
 
-describe("resolveSuiteIds", () => {
-  it("selects suites from git paths and expands also", () => {
-    expect(resolveSuiteIds(gate, [], ["packages/shared/index.ts"])).toEqual([
-      "lib",
-      "app",
-      "shared",
+describe("resolveSelectedCommandIds", () => {
+  it("always selects commands without run_in_file_change", () => {
+    expect(resolveSelectedCommandIds(stage, [], ["docs/readme.md"])).toEqual([
+      "format:check",
+      "test:e2e",
     ]);
-    expect(resolveSuiteIds(gate, [], ["package.json"])).toEqual(["lib", "app", "deps"]);
-    expect(resolveSuiteIds(gate, [], ["packages/lib/foo.ts"])).toEqual(["lib"]);
-    expect(resolveSuiteIds(gate, [], ["docs/readme.md"])).toEqual([]);
   });
 
-  it("honors explicit suite args without expanding also", () => {
-    expect(resolveSuiteIds(gate, ["shared"], [])).toEqual(["shared"]);
-    expect(resolveSuiteIds(gate, ["lib", "app"], [])).toEqual(["lib", "app"]);
-    expect(resolveSuiteIds(gate, ["all"], [])).toEqual(["lib", "app", "shared", "deps"]);
+  it("selects from git paths and expands command:// refs", () => {
+    expect(resolveSelectedCommandIds(stage, [], ["packages/lib/foo.ts"])).toEqual([
+      "format:check",
+      "test:lib",
+      "test:e2e",
+    ]);
+    expect(resolveSelectedCommandIds(stage, [], ["package.json"])).toEqual([
+      "format:check",
+      "test:lib",
+      "test:app",
+      "deps",
+      "test:e2e",
+    ]);
+    expect(
+      runnableSelectedIds(stage, resolveSelectedCommandIds(stage, [], ["package.json"])),
+    ).toEqual(["format:check", "test:lib", "test:app", "test:e2e"]);
+  });
+
+  it("honors explicit command args and still includes always-on", () => {
+    expect(resolveSelectedCommandIds(stage, ["test:lib"], [])).toEqual([
+      "format:check",
+      "test:lib",
+      "test:e2e",
+    ]);
+    expect(resolveSelectedCommandIds(stage, ["all"], []).length).toBe(stage.commands.length);
   });
 });
 
-describe("invalidSuiteArgs", () => {
+describe("invalidCommandArgs", () => {
   it("rejects unknown tokens", () => {
-    expect(invalidSuiteArgs(["lib", "nope"], ["lib", "app", "shared"])).toEqual(["nope"]);
-    expect(invalidSuiteArgs(["all"], ["lib"])).toEqual([]);
+    expect(invalidCommandArgs(["test:lib", "nope"], ["test:lib", "test:app"])).toEqual(["nope"]);
+    expect(invalidCommandArgs(["all"], ["test:lib"])).toEqual([]);
   });
 });

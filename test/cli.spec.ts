@@ -39,17 +39,26 @@ describe("cli json default", () => {
     writeFileSync(
       join(dir, "evolving.yml"),
       minimalV2Yaml({
-        checkYaml: `      - name: lint
+        verifyCommandsYaml: `      - name: lint
         command: ["node", "-e", "process.exit(1)"]`,
       }),
     );
-    const check = runCli(["check"], dir);
-    expect(check.status).toBe(1);
+    const verify = runCli(["verify"], dir);
+    expect(verify.status).toBe(1);
     const slim = runCli(["status"], dir);
     expect(JSON.parse(slim.stdout.trim()).last_run).toBeUndefined();
     const full = runCli(["status", "--full"], dir);
     const parsed = JSON.parse(full.stdout.trim());
-    expect(parsed.last_run?.command).toBe("check");
+    expect(parsed.last_run?.command).toBe("verify");
     expect(parsed.failed).toContain("lint");
+  });
+
+  it("check command is rejected", () => {
+    const dir = mkdtempSync(join(tmpdir(), "evolving-cli-check-gone-"));
+    const result = runCli(["check"], dir);
+    expect(result.status).toBe(2);
+    const parsed = JSON.parse(result.stdout.trim());
+    expect(parsed.ok).toBe(false);
+    expect(parsed.error).toMatch(/check was removed/i);
   });
 });
