@@ -12,6 +12,7 @@ stages:
     tags: [needs-agent]
 
   - id: prepare
+    tags: [run-in-finish]
     commands:
       - name: format
         command: ["npm", "run", "format"]
@@ -19,6 +20,7 @@ stages:
         command: ["npm", "run", "lint:fix"]
 
   - id: verify
+    tags: [run-in-finish]
     commands:
       - name: format:check
         command: ["npm", "run", "format:check"]

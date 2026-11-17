@@ -43,9 +43,11 @@ export {
   alwaysOnIds,
 } from "./detect.ts";
 export {
+  RUN_IN_FINISH_TAG,
   isAgentStage,
   isMachineStage,
   machineStages,
+  finishStages,
   findStage,
   nearestPriorAgentStage,
   stageCommands,

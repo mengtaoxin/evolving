@@ -101,19 +101,21 @@ describe("explain", () => {
       tags_vocabulary: string[];
     };
     expect(detail.agent_stage_ids).toEqual(["orient", "edit", "docs"]);
-    expect(detail.tags_vocabulary).toEqual(["needs-agent"]);
+    expect(detail.tags_vocabulary).toEqual(["needs-agent", "run-in-finish"]);
     const blob = JSON.stringify(report);
     expect(blob).not.toContain("Locate entry files");
     expect(blob).not.toContain("docs/overview.md");
   });
 
-  it("explain finish lists machine stages as id+runnable only", () => {
+  it("explain finish lists run-in-finish stages as id+runnable only", () => {
     const report = buildExplainTopic("finish", loadFixture());
     const detail = report.detail as {
-      machine_stages: Array<{ id: string; runnable: boolean }>;
+      finish_stages: Array<{ id: string; runnable: boolean }>;
+      tag: string;
       agent_skipped: string[];
     };
-    expect(detail.machine_stages).toEqual([
+    expect(detail.tag).toBe("run-in-finish");
+    expect(detail.finish_stages).toEqual([
       { id: "prepare", runnable: true },
       { id: "verify", runnable: true },
     ]);

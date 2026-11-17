@@ -11,7 +11,9 @@ describe("agent contract", () => {
     expect(AGENT_CONTRACT.agent_stages).toBe("no commands; agent-evaluated");
     expect(AGENT_CONTRACT.machine_stages).toBe("has commands; CLI run/finish");
     expect(AGENT_CONTRACT.resume_on_fail).toBe("nearest prior agent stage");
-    expect(AGENT_CONTRACT.finish_runs).toBe("all machine stages in order");
+    expect(AGENT_CONTRACT.finish_runs).toBe(
+      "machine stages tagged run-in-finish in order",
+    );
     expect(AGENT_CONTRACT.protocol_source).toBe("evolving explain");
     expect(AGENT_CONTRACT.do_not_duplicate_in_downstream_docs).toBe(true);
     expect(AGENT_CONTRACT.skip_when_vocabulary).toEqual([...SKIP_WHEN_VOCABULARY]);

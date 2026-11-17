@@ -28,8 +28,9 @@ export interface Stage {
   /** Documentation-only skip hint for agents; the CLI never evaluates it. */
   skip_when?: string;
   /**
-   * Optional semantic labels for agents; the CLI never enforces them.
-   * Recommended tokens live on AgentContract.tags_vocabulary.
+   * Optional labels. `run-in-finish` opts a machine stage into `evolving finish`;
+   * other tags (e.g. needs-agent) are semantic only. Recommended tokens live on
+   * AgentContract.tags_vocabulary.
    */
   tags?: readonly string[];
   commands?: readonly StageCommand[];
@@ -102,7 +103,7 @@ export interface AgentContract {
   agent_stages: "no commands; agent-evaluated";
   machine_stages: "has commands; CLI run/finish";
   resume_on_fail: "nearest prior agent stage";
-  finish_runs: "all machine stages in order";
+  finish_runs: "machine stages tagged run-in-finish in order";
   protocol_source: "evolving explain";
   do_not_duplicate_in_downstream_docs: true;
   skip_when_vocabulary: readonly string[];

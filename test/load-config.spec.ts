@@ -33,6 +33,12 @@ describe("parseConfig", () => {
     expect(stagesWithTag(config, "needs-agent").map((s) => s.id)).toEqual(["edit"]);
     expect(findStage(config, "orient")!.tags).toBeUndefined();
     expect(isMachineStage(findStage(config, "prepare")!)).toBe(true);
+    expect(findStage(config, "prepare")!.tags).toEqual(["run-in-finish"]);
+    expect(findStage(config, "verify")!.tags).toEqual(["run-in-finish"]);
+    expect(stagesWithTag(config, "run-in-finish").map((s) => s.id)).toEqual([
+      "prepare",
+      "verify",
+    ]);
     expect(stageCommands(findStage(config, "prepare")!).map((s) => s.name)).toEqual([
       "format",
       "lint:fix",

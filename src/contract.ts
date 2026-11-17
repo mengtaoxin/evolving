@@ -8,8 +8,8 @@ export const SKIP_WHEN_VOCABULARY = [
   "already_verified",
 ] as const;
 
-/** Recommended stage tags for agents; free text still allowed in YAML. */
-export const TAGS_VOCABULARY = ["needs-agent"] as const;
+/** Recommended stage tags; free text still allowed in YAML. */
+export const TAGS_VOCABULARY = ["needs-agent", "run-in-finish"] as const;
 
 /** Hard anti-patterns for consuming evolving JSON (explain json / contract). */
 export const AGENT_IO_DO_NOT = [
@@ -34,7 +34,7 @@ export const AGENT_CONTRACT: AgentContract = {
   agent_stages: "no commands; agent-evaluated",
   machine_stages: "has commands; CLI run/finish",
   resume_on_fail: "nearest prior agent stage",
-  finish_runs: "all machine stages in order",
+  finish_runs: "machine stages tagged run-in-finish in order",
   protocol_source: "evolving explain",
   do_not_duplicate_in_downstream_docs: true,
   skip_when_vocabulary: SKIP_WHEN_VOCABULARY,
@@ -60,14 +60,16 @@ point agents at explain — do not duplicate these rules in the consumer repo.
    Stages without commands are agent stages — Read evolving.yml for summary/refs/skip_when/tags.
 3. Put an agent "edit" stage where the agent should change code (e.g. after orient, before gates).
 4. stdout is always one quiet JSON object. Never head/tail/tee/less/jq-pipe it.
-5. evolving finish runs every machine stage in order (skips agent stages).
+5. evolving finish runs machine stages tagged run-in-finish in document order
+   (skips agent stages and machine stages without that tag).
 6. On failure, evolving status suggests the nearest prior agent stage (typically edit), then re-walk.
 7. Full step output lives under .evolving/logs/ (path on each step.log). If your view
    truncated the JSON, run evolving status --full and Read the log — do not re-run to re-read.
 8. skip_when is agent-evaluated. Recommended tokens: ${SKIP_WHEN_VOCABULARY.join(", ")}.
-9. tags are optional semantic labels on any stage (CLI never enforces). Recommended:
-   ${TAGS_VOCABULARY.join(", ")}. Read evolving.yml for the current step to see tags —
-   evolving stages / explain stages maps stay id+runnable only (no tags in the map).
+9. tags are optional labels on any stage. Recommended: ${TAGS_VOCABULARY.join(", ")}.
+   finish enforces run-in-finish; other tags (e.g. needs-agent) are semantic only.
+   Read evolving.yml for the current step to see tags — evolving stages / explain stages
+   maps stay id+runnable only (no tags in the map).
 10. Machine stage commands: omit run_in_file_change to always run; otherwise select via git paths.
    Composition: command://id refs within the same stage.
 11. Machine detail on demand: evolving explain run. evolving stages is a minimal id+runnable map.

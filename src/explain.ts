@@ -7,7 +7,12 @@ import {
   TAGS_VOCABULARY,
 } from "./contract.ts";
 import { printJson } from "./report.ts";
-import { isAgentStage, isMachineStage, machineStages } from "./stages-access.ts";
+import {
+  finishStages,
+  isAgentStage,
+  isMachineStage,
+  machineStages,
+} from "./stages-access.ts";
 import { buildStatus } from "./status.ts";
 import type {
   EvolvingConfig,
@@ -28,7 +33,7 @@ const AGENT_IO_DETAIL = {
 export const EXPLAIN_TOPICS: readonly ExplainTopicRef[] = [
   { id: "contract", summary: "Fixed agent protocol (ordered stages, run, finish, resume)" },
   { id: "run", summary: "Run one stage by id (commands + git select + command://)" },
-  { id: "finish", summary: "Run all machine stages in document order" },
+  { id: "finish", summary: "Run machine stages tagged run-in-finish in document order" },
   { id: "stages", summary: "Minimal timeline map (id+runnable) — no panorama" },
   { id: "status", summary: "Resume / recover truncated view from .evolving/last-run.json + logs" },
   { id: "json", summary: "Quiet JSON stdout; full step text under .evolving/logs/" },
@@ -117,14 +122,16 @@ export function buildExplainTopic(
     }
     case "finish":
       return topicBase(topic, config, {
-        summary: "Runs every machine stage (has commands) in document order. Skips agent stages.",
+        summary:
+          "Runs machine stages tagged run-in-finish in document order. Skips agent stages and machine stages without that tag.",
         detail: {
-          machine_stages: config
-            ? machineStages(config).map((s): StageView => ({
+          finish_stages: config
+            ? finishStages(config).map((s): StageView => ({
                 id: s.id,
                 runnable: true,
               }))
             : null,
+          tag: "run-in-finish",
           agent_skipped: config
             ? config.stages.filter(isAgentStage).map((s) => s.id)
             : null,
@@ -212,7 +219,7 @@ export function buildExplainTopic(
     case "agent":
       return topicBase(topic, config, {
         summary:
-          "Agent stages have no commands. The CLI never executes or evaluates skip_when or tags. This topic lists ids only — read evolving.yml for the current step's summary/refs/skip_when/tags. Place an edit stage where the agent should change code; optional tags like needs-agent clarify intent.",
+          "Agent stages have no commands. The CLI never executes or evaluates skip_when. This topic lists ids only — read evolving.yml for the current step's summary/refs/skip_when/tags. Place an edit stage where the agent should change code; optional tags like needs-agent clarify intent. Machine stages use run-in-finish to opt into evolving finish.",
         detail: {
           skip_when_vocabulary: SKIP_WHEN_VOCABULARY,
           tags_vocabulary: TAGS_VOCABULARY,
@@ -223,7 +230,7 @@ export function buildExplainTopic(
           edit_checkpoint:
             "Put a no-commands stage (e.g. id: edit) before machine gates; status resumes there on failure",
           tags:
-            "Optional labels on any stage; recommended needs-agent. CLI does not enforce. Not shown in evolving stages map.",
+            "Optional labels; recommended needs-agent (semantic) and run-in-finish (opts machine stage into finish). Not shown in evolving stages map.",
         },
         how_to_run: ["evolving explain agent"],
         see_also: ["stages", "finish", "contract"],

@@ -6,11 +6,12 @@ import {
 import { emitRun } from "./emit.ts";
 import { buildRunReport, createReporter, timestamp } from "./report.ts";
 import { createRunner, installSignalHandlers } from "./run.ts";
-import { machineStages } from "./stages-access.ts";
+import { finishStages } from "./stages-access.ts";
 import type { EvolvingConfig, RunReport } from "./types.ts";
 
 /**
- * Run every machine stage (has commands) in document order. Skips agent stages.
+ * Run machine stages tagged `run-in-finish` in document order.
+ * Skips agent stages and machine stages without that tag.
  */
 export async function runFinish(cwd: string, config: EvolvingConfig): Promise<RunReport> {
   const stamp = timestamp(new Date());
@@ -19,7 +20,7 @@ export async function runFinish(cwd: string, config: EvolvingConfig): Promise<Ru
   installSignalHandlers(children);
   const { failed, steps, report } = createReporter(cwd, stamp);
 
-  for (const stage of machineStages(config)) {
+  for (const stage of finishStages(config)) {
     const changed = changedPathsFromGit(cwd);
     const selected = resolveSelectedCommandIds(stage, [], changed);
     const runnable = runnableSelectedIds(stage, selected);

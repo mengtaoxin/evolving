@@ -12,11 +12,21 @@ export function isMachineStage(stage: Stage): stage is Stage & {
   return stage.commands !== undefined && stage.commands.length > 0;
 }
 
-/** Machine stages finish executes, in document order. */
+/** Tag that opts a machine stage into `evolving finish`. */
+export const RUN_IN_FINISH_TAG = "run-in-finish";
+
+/** Machine stages (has commands), in document order. */
 export function machineStages(
   config: EvolvingConfig,
 ): readonly (Stage & { commands: readonly StageCommand[] })[] {
   return config.stages.filter(isMachineStage);
+}
+
+/** Machine stages tagged `run-in-finish` — what `evolving finish` executes. */
+export function finishStages(
+  config: EvolvingConfig,
+): readonly (Stage & { commands: readonly StageCommand[] })[] {
+  return machineStages(config).filter((s) => stageHasTag(s, RUN_IN_FINISH_TAG));
 }
 
 export function findStage(config: EvolvingConfig, id: string): Stage | undefined {

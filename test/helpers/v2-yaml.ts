@@ -10,8 +10,16 @@ ${options.stagesYaml}
 }
 
 /** One machine stage with the given commands YAML body (indented items). */
-export function machineStageYaml(id: string, commandsYaml: string): string {
-  return `  - id: ${id}
+export function machineStageYaml(
+  id: string,
+  commandsYaml: string,
+  options: { tags?: string[] } = {},
+): string {
+  const tagsLine =
+    options.tags && options.tags.length > 0
+      ? `\n    tags: ${JSON.stringify(options.tags)}`
+      : "";
+  return `  - id: ${id}${tagsLine}
     commands:
 ${commandsYaml}`;
 }
