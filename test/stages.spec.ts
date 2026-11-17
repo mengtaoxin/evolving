@@ -27,15 +27,15 @@ describe("printStages", () => {
     expect(lines).toHaveLength(1);
     const view = JSON.parse(lines[0] as string);
     expect(view.command).toBe("stages");
-    expect(view.after_edit).toEqual(["prepare", "verify"]);
+    expect(view.after_edit).toBeUndefined();
     expect(view.stages.map((s: { id: string }) => s.id)).toEqual([
       "orient",
-      "tests",
+      "edit",
       "prepare",
       "verify",
       "docs",
     ]);
-    expect(view.first).toEqual({ id: "orient", kind: "guidance" });
+    expect(view.first).toEqual({ id: "orient", runnable: false });
     const blob = JSON.stringify(view);
     expect(blob).not.toContain("npm run format");
     expect(blob).not.toContain("Locate entry files");
@@ -43,24 +43,28 @@ describe("printStages", () => {
     expect(blob).not.toContain("test:lib");
   });
 
-  it("buildStagesView is id+kind only with progressive hint", () => {
+  it("buildStagesView is id+runnable only with progressive hint", () => {
     const config = parseConfig(parseYaml(readFileSync(fixturePath, "utf8")));
     const view = buildStagesView(config);
     expect(view.evolving).toBe(1);
     expect(view.command).toBe("stages");
-    expect(view.contract.after_edit).toEqual(AGENT_CONTRACT.after_edit);
+    expect(view.contract.stages_order).toEqual(AGENT_CONTRACT.stages_order);
     expect(view.stages).toEqual([
-      { id: "orient", kind: "guidance" },
-      { id: "tests", kind: "guidance" },
-      { id: "prepare", kind: "prepare" },
-      { id: "verify", kind: "verify" },
-      { id: "docs", kind: "guidance" },
+      { id: "orient", runnable: false },
+      { id: "edit", runnable: false },
+      { id: "prepare", runnable: true },
+      { id: "verify", runnable: true },
+      { id: "docs", runnable: false },
     ]);
-    expect(view.first).toEqual({ id: "orient", kind: "guidance" });
+    expect(view.first).toEqual({ id: "orient", runnable: false });
     expect(view.progressive).toMatch(/no panorama/i);
-    const verify = view.stages.find((s) => s.kind === "verify");
-    expect(verify).toEqual({ id: "verify", kind: "verify" });
-    expect(verify).not.toHaveProperty("check");
-    expect(verify).not.toHaveProperty("suites");
+    const verify = view.stages.find((s) => s.id === "verify");
+    expect(verify).toEqual({ id: "verify", runnable: true });
+    expect(verify).not.toHaveProperty("kind");
+    expect(verify).not.toHaveProperty("commands");
+    expect(verify).not.toHaveProperty("tags");
+    const edit = view.stages.find((s) => s.id === "edit");
+    expect(edit).toEqual({ id: "edit", runnable: false });
+    expect(edit).not.toHaveProperty("tags");
   });
 });

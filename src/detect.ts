@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import type { VerifyCommand, VerifyStage } from "./types.ts";
+import type { Stage, StageCommand } from "./types.ts";
 import { commandRefId, isRefOnlyCommand } from "./types.ts";
 
 /** True when a changed path matches a suite path pattern. */
@@ -26,8 +26,8 @@ export function changedPathsFromGit(cwd: string): string[] {
   return paths;
 }
 
-export function commandIdsFromStage(stage: VerifyStage): string[] {
-  return stage.commands.map((c) => c.id);
+export function commandIdsFromStage(stage: Stage): string[] {
+  return (stage.commands ?? []).map((c) => c.id);
 }
 
 export function invalidCommandArgs(
@@ -39,30 +39,31 @@ export function invalidCommandArgs(
 }
 
 /**
- * Command ids selected for verify (composition entries included until expand).
+ * Command ids selected for a machine stage (composition entries included until expand).
  * - Explicit args: named ids (or every id for `all`). Always-on items still included.
  * - Git detect: always-on + path matches; then expand command:// edges.
  */
 export function resolveSelectedCommandIds(
-  stage: VerifyStage,
+  stage: Stage,
   commandArgs: readonly string[],
   changedPaths: readonly string[],
 ): string[] {
+  const commands = stage.commands ?? [];
   const ids = commandIdsFromStage(stage);
-  const byId = new Map(stage.commands.map((c) => [c.id, c]));
+  const byId = new Map(commands.map((c) => [c.id, c]));
   const selected = new Set<string>();
 
   if (commandArgs.includes("all")) {
     for (const id of ids) selected.add(id);
   } else if (commandArgs.length > 0) {
-    for (const cmd of stage.commands) {
+    for (const cmd of commands) {
       if (!cmd.run_in_file_change) selected.add(cmd.id);
     }
     for (const arg of commandArgs) {
       if (byId.has(arg)) selected.add(arg);
     }
   } else {
-    for (const cmd of stage.commands) {
+    for (const cmd of commands) {
       if (!cmd.run_in_file_change) {
         selected.add(cmd.id);
         continue;
@@ -77,25 +78,25 @@ export function resolveSelectedCommandIds(
 
 /** Ids that will actually be spawned (excludes command:// composition entries). */
 export function runnableSelectedIds(
-  stage: VerifyStage,
+  stage: Stage,
   selectedIds: readonly string[],
 ): string[] {
-  const byId = new Map(stage.commands.map((c) => [c.id, c]));
+  const byId = new Map((stage.commands ?? []).map((c) => [c.id, c]));
   return selectedIds.filter((id) => {
     const cmd = byId.get(id);
     return cmd !== undefined && !isRefOnlyCommand(cmd.command);
   });
 }
 
-export function alwaysOnIds(stage: VerifyStage, selectedIds: readonly string[]): string[] {
-  const byId = new Map(stage.commands.map((c) => [c.id, c]));
+export function alwaysOnIds(stage: Stage, selectedIds: readonly string[]): string[] {
+  const byId = new Map((stage.commands ?? []).map((c) => [c.id, c]));
   return selectedIds.filter((id) => {
     const cmd = byId.get(id);
     return cmd !== undefined && !cmd.run_in_file_change && !isRefOnlyCommand(cmd.command);
   });
 }
 
-function pathsMatch(cmd: VerifyCommand, changedPaths: readonly string[]): boolean {
+function pathsMatch(cmd: StageCommand, changedPaths: readonly string[]): boolean {
   const patterns = cmd.run_in_file_change;
   if (!patterns) return false;
   return changedPaths.some((changed) =>
@@ -105,7 +106,7 @@ function pathsMatch(cmd: VerifyCommand, changedPaths: readonly string[]): boolea
 
 function expandCommandRefs(
   selected: Set<string>,
-  byId: ReadonlyMap<string, VerifyCommand>,
+  byId: ReadonlyMap<string, StageCommand>,
 ): void {
   const queue = [...selected];
   while (queue.length > 0) {

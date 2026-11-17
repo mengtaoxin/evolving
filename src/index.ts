@@ -1,5 +1,4 @@
 export type {
-  AfterEditStep,
   AgentContract,
   EvolvingConfig,
   ExplainProjectSummary,
@@ -7,22 +6,16 @@ export type {
   ExplainTopicId,
   ExplainTopicRef,
   FailureSummary,
-  GateCommand,
-  GateCommandView,
-  GuidanceStage,
-  PrepareStage,
   ReportStep,
   RunReport,
-  RunStage,
+  SelectionReportMeta,
   Stage,
+  StageCommand,
+  StageCommandView,
   StageView,
   StagesView,
   StatusReport,
   StepResult,
-  VerifyCommand,
-  VerifyCommandView,
-  VerifyReportMeta,
-  VerifyStage,
 } from "./types.ts";
 export {
   COMMAND_REF_PREFIX,
@@ -35,6 +28,7 @@ export {
   AGENT_IO_DO,
   AGENT_IO_DO_NOT,
   SKIP_WHEN_VOCABULARY,
+  TAGS_VOCABULARY,
   agentContractFor,
   agentContractText,
 } from "./contract.ts";
@@ -49,14 +43,16 @@ export {
   alwaysOnIds,
 } from "./detect.ts";
 export {
-  prepareCommands,
-  prepareSteps,
-  verifyStage,
-  verifyCommands,
+  isAgentStage,
+  isMachineStage,
   machineStages,
+  findStage,
+  nearestPriorAgentStage,
+  stageCommands,
+  stageHasTag,
+  stagesWithTag,
 } from "./stages-access.ts";
-export { runPrepare } from "./prepare.ts";
-export { runVerify } from "./verify.ts";
+export { runStage, runMachineStage } from "./run-stage.ts";
 export { runFinish } from "./finish.ts";
 export { buildStagesView, printStages } from "./stages.ts";
 export { buildStatus, printStatus } from "./status.ts";

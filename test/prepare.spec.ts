@@ -2,42 +2,44 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadConfig } from "../src/load-config.ts";
-import { runPrepare } from "../src/prepare.ts";
-import { minimalV2Yaml } from "./helpers/v2-yaml.ts";
+import { runStage } from "../src/run-stage.ts";
+import { agentStageYaml, machineStageYaml, minimalV2Yaml } from "./helpers/v2-yaml.ts";
 
-describe("runPrepare", () => {
-  it("runs prepare stage commands and returns 0 on success", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "evolving-prepare-"));
+describe("runStage", () => {
+  it("runs machine stage commands and returns 0 on success", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "evolving-run-"));
     writeFileSync(
       join(dir, "evolving.yml"),
       minimalV2Yaml({
-        verifyCommandsYaml: `      - name: ok
-        command: ["true"]`,
-        prepareCommandsYaml: `      - name: touch
+        stagesYaml: machineStageYaml(
+          "prepare",
+          `      - name: touch
         command: ["node", "-e", "require('node:fs').writeFileSync('prepared.txt','ok')"]`,
+        ),
       }),
     );
     const original = console.log;
     console.log = () => {};
     let report;
     try {
-      report = await runPrepare(dir, loadConfig(dir));
+      report = await runStage(dir, loadConfig(dir), "prepare");
     } finally {
       console.log = original;
     }
     expect(report.exit_code).toBe(0);
+    expect(report.command).toBe("run");
+    expect(report.stage_id).toBe("prepare");
     expect(
       await import("node:fs").then((fs) => fs.readFileSync(join(dir, "prepared.txt"), "utf8")),
     ).toBe("ok");
   });
 
-  it("exits 0 with empty commands when prepare stage is omitted", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "evolving-prepare-empty-"));
+  it("agent stage returns ok with no commands to run", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "evolving-run-agent-"));
     writeFileSync(
       join(dir, "evolving.yml"),
       minimalV2Yaml({
-        verifyCommandsYaml: `      - name: ok
-        command: ["true"]`,
+        stagesYaml: agentStageYaml("edit", { summary: "change code" }),
       }),
     );
     const lines: string[] = [];
@@ -47,12 +49,14 @@ describe("runPrepare", () => {
     };
     let report;
     try {
-      report = await runPrepare(dir, loadConfig(dir));
+      report = await runStage(dir, loadConfig(dir), "edit");
     } finally {
       console.log = original;
     }
     expect(report.exit_code).toBe(0);
-    expect(report.steps).toEqual([]);
-    expect(JSON.parse(lines[0] as string).command).toBe("prepare");
+    expect(report.ok).toBe(true);
+    expect(report.stage_id).toBe("edit");
+    expect(report.steps[0]?.output_preview).toMatch(/no commands to run/i);
+    expect(JSON.parse(lines[0] as string).command).toBe("run");
   });
 });

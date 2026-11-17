@@ -1,8 +1,13 @@
+import { loadConfig } from "./load-config.ts";
 import { lastRunPath, readLastRun } from "./last-run.ts";
 import { buildFailureSummaries, printJson } from "./report.ts";
-import type { FailureSummary, RunReport, StatusReport } from "./types.ts";
+import { nearestPriorAgentStage } from "./stages-access.ts";
+import type { EvolvingConfig, FailureSummary, RunReport, StatusReport } from "./types.ts";
 
-export function buildStatus(cwd: string, options: { full?: boolean } = {}): StatusReport {
+export function buildStatus(
+  cwd: string,
+  options: { full?: boolean; config?: EvolvingConfig | null } = {},
+): StatusReport {
   const full = options.full === true;
   const last = readLastRun(cwd);
   if (!last) {
@@ -30,6 +35,8 @@ export function buildStatus(cwd: string, options: { full?: boolean } = {}): Stat
     };
   }
 
+  const config = options.config === undefined ? tryConfig(cwd) : options.config;
+
   return {
     evolving: 1,
     command: "status",
@@ -39,7 +46,7 @@ export function buildStatus(cwd: string, options: { full?: boolean } = {}): Stat
     failure,
     last_run_path: path,
     ...(full ? { last_run: last } : {}),
-    next: suggestNext(last),
+    next: suggestNext(last, config),
   };
 }
 
@@ -47,6 +54,14 @@ export function printStatus(cwd: string, options: { full?: boolean } = {}): Stat
   const status = buildStatus(cwd, options);
   printJson(status);
   return status;
+}
+
+function tryConfig(cwd: string): EvolvingConfig | null {
+  try {
+    return loadConfig(cwd);
+  } catch {
+    return null;
+  }
 }
 
 function failuresFrom(last: RunReport): FailureSummary[] {
@@ -57,26 +72,18 @@ function failuresFrom(last: RunReport): FailureSummary[] {
   return buildFailureSummaries(last.failed, last.steps);
 }
 
-function suggestNext(last: RunReport): string[] {
-  if (last.command === "prepare") return ["prepare"];
-  if (last.command === "verify") {
-    const failedSteps = last.steps.filter((s) => !s.ok);
-    const alwaysOn = new Set(last.verify?.always_on ?? []);
-    const alwaysFailed = failedSteps.some((s) => alwaysOn.has(s.name));
-    const resume = verifyResumeArgs(last, failedSteps);
-    if (alwaysFailed) return ["prepare", "verify", ...resume];
-    return ["verify", ...resume];
+function suggestNext(last: RunReport, config: EvolvingConfig | null): string[] {
+  const stageId = last.stage_id;
+  if (config && stageId) {
+    const agent = nearestPriorAgentStage(config, stageId);
+    if (agent) {
+      const next = [agent.id];
+      if (last.command === "run") next.push(`run ${stageId}`);
+      else if (last.command === "finish") next.push("finish");
+      return next;
+    }
   }
+  if (last.command === "run" && stageId) return [`run ${stageId}`];
   if (last.command === "finish") return ["finish"];
   return [last.command];
-}
-
-/** Command ids for resume; omit when an always-on gate failed (full verify). */
-function verifyResumeArgs(last: RunReport, failedSteps: RunReport["steps"]): string[] {
-  if (last.command !== "verify" || !last.verify) return [];
-  const alwaysOn = new Set(last.verify.always_on);
-  if (failedSteps.some((s) => alwaysOn.has(s.name))) {
-    return [];
-  }
-  return failedSteps.map((s) => s.name).filter((name) => last.verify?.selected.includes(name));
 }

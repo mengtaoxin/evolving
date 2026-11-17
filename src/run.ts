@@ -1,7 +1,16 @@
 import { spawn } from "node:child_process";
-import type { GateCommand, StepResult } from "./types.ts";
+import type { StepResult } from "./types.ts";
 
 export type ChildHandle = ReturnType<typeof spawn>;
+
+/** Minimal spawn request used by prepare/run/finish runners. */
+export interface SpawnStep {
+  command: readonly string[];
+  name?: string;
+  env?: Readonly<Record<string, string>>;
+  showOutputOnSuccess?: boolean;
+  onMissing?: "warn";
+}
 
 function isMissingExecutable(err: unknown): boolean {
   return (
@@ -14,11 +23,11 @@ function isMissingExecutable(err: unknown): boolean {
 
 export function createRunner(cwd: string): {
   children: Set<ChildHandle>;
-  runCommand: (step: GateCommand) => Promise<StepResult>;
+  runCommand: (step: SpawnStep) => Promise<StepResult>;
 } {
   const children = new Set<ChildHandle>();
 
-  function runCommand(step: GateCommand): Promise<StepResult> {
+  function runCommand(step: SpawnStep): Promise<StepResult> {
     const [executable, ...args] = step.command;
     if (!executable) {
       return Promise.resolve({

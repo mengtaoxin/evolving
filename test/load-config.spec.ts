@@ -3,7 +3,14 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
 import { parseConfig } from "../src/load-config.ts";
-import { prepareCommands, verifyCommands, verifyStage } from "../src/stages-access.ts";
+import {
+  findStage,
+  isAgentStage,
+  isMachineStage,
+  stageCommands,
+  stageHasTag,
+  stagesWithTag,
+} from "../src/stages-access.ts";
 
 const fixtureDir = dirname(fileURLToPath(import.meta.url));
 const fixturePath = join(fixtureDir, "fixtures/minimal.evolving.yml");
@@ -12,16 +19,25 @@ describe("parseConfig", () => {
   it("loads the abstract fixture", () => {
     const config = parseConfig(parseYaml(readFileSync(fixturePath, "utf8")));
     expect(config.version).toBe(2);
-    expect(config.after_edit).toEqual(["prepare", "verify"]);
     expect(config.stages.map((s) => s.id)).toEqual([
       "orient",
-      "tests",
+      "edit",
       "prepare",
       "verify",
       "docs",
     ]);
-    expect(prepareCommands(config).map((s) => s.name)).toEqual(["format", "lint:fix"]);
-    const cmds = verifyCommands(config);
+    expect(isAgentStage(findStage(config, "orient")!)).toBe(true);
+    expect(isAgentStage(findStage(config, "edit")!)).toBe(true);
+    expect(findStage(config, "edit")!.tags).toEqual(["needs-agent"]);
+    expect(stageHasTag(findStage(config, "edit")!, "needs-agent")).toBe(true);
+    expect(stagesWithTag(config, "needs-agent").map((s) => s.id)).toEqual(["edit"]);
+    expect(findStage(config, "orient")!.tags).toBeUndefined();
+    expect(isMachineStage(findStage(config, "prepare")!)).toBe(true);
+    expect(stageCommands(findStage(config, "prepare")!).map((s) => s.name)).toEqual([
+      "format",
+      "lint:fix",
+    ]);
+    const cmds = stageCommands(findStage(config, "verify")!);
     expect(cmds.map((c) => c.id)).toEqual([
       "format:check",
       "lint",
@@ -38,37 +54,28 @@ describe("parseConfig", () => {
     ]);
     expect(cmds.find((c) => c.id === "test:lib")?.run_in_file_change).toEqual(["packages/lib/"]);
     expect(cmds.find((c) => c.id === "format:check")?.run_in_file_change).toBeUndefined();
-    expect(verifyStage(config).commands.length).toBe(8);
   });
 
   it("defaults id to name", () => {
     const config = parseConfig({
       version: 2,
-      after_edit: ["prepare", "verify"],
       stages: [
         {
           id: "verify",
-          kind: "verify",
           commands: [{ name: "lint", command: ["true"] }],
         },
       ],
     });
-    expect(verifyCommands(config)[0]?.id).toBe("lint");
+    expect(stageCommands(findStage(config, "verify")!)[0]?.id).toBe("lint");
   });
 
-  it("allows omitting prepare stage (empty prepare)", () => {
+  it("allows agent-only configs with no machine stages", () => {
     const config = parseConfig({
       version: 2,
-      after_edit: ["prepare", "verify"],
-      stages: [
-        {
-          id: "verify",
-          kind: "verify",
-          commands: [{ name: "ok", command: ["true"] }],
-        },
-      ],
+      stages: [{ id: "orient", summary: "read docs" }],
     });
-    expect(prepareCommands(config)).toEqual([]);
+    expect(config.stages).toHaveLength(1);
+    expect(isAgentStage(config.stages[0]!)).toBe(true);
   });
 
   it("rejects version 1", () => {
@@ -81,34 +88,19 @@ describe("parseConfig", () => {
     ).toThrow(/version 1 is not supported/);
   });
 
-  it("rejects removed check/suites/detect/always/fix/steps", () => {
+  it("rejects removed after_edit and kind", () => {
     expect(() =>
       parseConfig({
         version: 2,
         after_edit: ["prepare", "verify"],
-        stages: [
-          {
-            id: "verify",
-            kind: "verify",
-            check: [],
-            detect: "git",
-            suites: {},
-            commands: [{ name: "ok", command: ["true"] }],
-          },
-        ],
+        stages: [{ id: "verify", commands: [{ name: "ok", command: ["true"] }] }],
       }),
-    ).toThrow(/check was removed/);
+    ).toThrow(/after_edit was removed/);
 
     expect(() =>
       parseConfig({
         version: 2,
-        after_edit: ["prepare", "verify"],
         stages: [
-          {
-            id: "prepare",
-            kind: "prepare",
-            steps: [{ command: ["true"] }],
-          },
           {
             id: "verify",
             kind: "verify",
@@ -116,32 +108,25 @@ describe("parseConfig", () => {
           },
         ],
       }),
-    ).toThrow(/steps was renamed/);
+    ).toThrow(/kind was removed/);
+  });
 
+  it("rejects empty commands array", () => {
     expect(() =>
       parseConfig({
         version: 2,
-        after_edit: ["prepare", "verify"],
-        stages: [
-          {
-            id: "verify",
-            kind: "verify",
-            commands: [{ name: "ok", command: ["true"], fix: ["true"] }],
-          },
-        ],
+        stages: [{ id: "x", commands: [] }],
       }),
-    ).toThrow(/fix/);
+    ).toThrow(/commands must be non-empty/);
   });
 
   it("rejects mixed argv and command:// refs", () => {
     expect(() =>
       parseConfig({
         version: 2,
-        after_edit: ["prepare", "verify"],
         stages: [
           {
             id: "verify",
-            kind: "verify",
             commands: [
               {
                 name: "bad",
@@ -158,11 +143,9 @@ describe("parseConfig", () => {
     expect(() =>
       parseConfig({
         version: 2,
-        after_edit: ["prepare", "verify"],
         stages: [
           {
             id: "verify",
-            kind: "verify",
             commands: [
               {
                 name: "deps",
@@ -176,47 +159,45 @@ describe("parseConfig", () => {
     ).toThrow(/unknown command:\/\/missing/);
   });
 
-  it("rejects guidance stages that set command", () => {
+  it("rejects removed command key on agent stages", () => {
     expect(() =>
       parseConfig({
         version: 2,
-        after_edit: ["prepare", "verify"],
-        stages: [
-          { id: "x", kind: "guidance", command: ["true"] },
-          {
-            id: "verify",
-            kind: "verify",
-            commands: [{ name: "ok", command: ["true"] }],
-          },
-        ],
+        stages: [{ id: "x", command: ["true"] }],
       }),
-    ).toThrow(/must not set command/);
+    ).toThrow(/command was removed/);
   });
 
-  it("requires run stages to have a command", () => {
-    expect(() =>
-      parseConfig({
-        version: 2,
-        after_edit: ["prepare", "verify"],
-        stages: [
-          { id: "x", kind: "run" },
-          {
-            id: "verify",
-            kind: "verify",
-            commands: [{ name: "ok", command: ["true"] }],
-          },
-        ],
-      }),
-    ).toThrow(/command/);
-  });
+  it("parses optional tags and rejects empty or duplicate tags", () => {
+    const config = parseConfig({
+      version: 2,
+      stages: [
+        { id: "edit", tags: ["needs-agent", "review"] },
+        { id: "orient", summary: "read" },
+      ],
+    });
+    expect(config.stages[0]!.tags).toEqual(["needs-agent", "review"]);
+    expect(stageHasTag(config.stages[1]!, "needs-agent")).toBe(false);
 
-  it("requires exactly one verify stage", () => {
     expect(() =>
       parseConfig({
         version: 2,
-        after_edit: ["prepare", "verify"],
-        stages: [{ id: "orient", kind: "guidance" }],
+        stages: [{ id: "edit", tags: [] }],
       }),
-    ).toThrow(/exactly one kind: verify/);
+    ).toThrow(/tags must be non-empty/);
+
+    expect(() =>
+      parseConfig({
+        version: 2,
+        stages: [{ id: "edit", tags: ["needs-agent", "needs-agent"] }],
+      }),
+    ).toThrow(/duplicate tag/);
+
+    expect(() =>
+      parseConfig({
+        version: 2,
+        stages: [{ id: "edit", tags: [""] }],
+      }),
+    ).toThrow(/tags\[0\] must be a non-empty string/);
   });
 });

@@ -1,4 +1,4 @@
-import type { EvolvingConfig, GateCommand, RunReport } from "./types.ts";
+import type { EvolvingConfig, RunReport, Stage } from "./types.ts";
 import {
   alwaysOnIds,
   changedPathsFromGit,
@@ -10,16 +10,72 @@ import {
 import { emitRun } from "./emit.ts";
 import { buildRunReport, createReporter, timestamp } from "./report.ts";
 import { createRunner, installSignalHandlers } from "./run.ts";
-import { verifyStage } from "./stages-access.ts";
+import { findStage, isMachineStage } from "./stages-access.ts";
 
-export async function runVerify(
+/**
+ * Run one stage by id.
+ * - Machine stage: select + spawn commands (git path / command://).
+ * - Agent stage (no commands): do not spawn; return ok with a clear message.
+ */
+export async function runStage(
   cwd: string,
   config: EvolvingConfig,
-  args: readonly string[],
+  stageId: string,
+  args: readonly string[] = [],
+): Promise<RunReport> {
+  const stage = findStage(config, stageId);
+  if (!stage) {
+    return emitRun(
+      cwd,
+      buildRunReport({
+        command: "run",
+        startedAt: Date.now(),
+        failed: ["args"],
+        steps: [
+          {
+            name: "args",
+            ok: false,
+            code: 2,
+            seconds: 0,
+            output_preview: `Unknown stage id: ${stageId}. Expected: ${config.stages.map((s) => s.id).join(", ")}.`,
+          },
+        ],
+        exitCode: 2,
+        stage_id: stageId,
+      }),
+    );
+  }
+
+  if (!isMachineStage(stage)) {
+    return emitRun(
+      cwd,
+      buildRunReport({
+        command: "run",
+        startedAt: Date.now(),
+        failed: [],
+        steps: [
+          {
+            name: stage.id,
+            ok: true,
+            code: 0,
+            seconds: 0,
+            output_preview: `Stage "${stage.id}" has no commands to run (agent stage).`,
+          },
+        ],
+        stage_id: stage.id,
+      }),
+    );
+  }
+
+  return runMachineStage(cwd, stage, args);
+}
+
+export async function runMachineStage(
+  cwd: string,
+  stage: Stage & { commands: NonNullable<Stage["commands"]> },
+  args: readonly string[] = [],
 ): Promise<RunReport> {
   const commandArgs = args.filter((arg) => !arg.startsWith("--"));
-  // Accept legacy no-op flags so older habits do not break argv parsing.
-  const stage = verifyStage(config);
   const commandIds = commandIdsFromStage(stage);
   const invalid = invalidCommandArgs(commandArgs, commandIds);
   if (invalid.length > 0) {
@@ -27,7 +83,7 @@ export async function runVerify(
     return emitRun(
       cwd,
       buildRunReport({
-        command: "verify",
+        command: "run",
         startedAt: Date.now(),
         failed: ["args"],
         steps: [
@@ -40,7 +96,8 @@ export async function runVerify(
           },
         ],
         exitCode: 2,
-        verify: {
+        stage_id: stage.id,
+        selection: {
           changed_paths_count: 0,
           selected: [],
           always_on: [],
@@ -64,14 +121,13 @@ export async function runVerify(
   for (const id of runnable) {
     const cmd = byId.get(id);
     if (!cmd) continue;
-    const step: GateCommand = {
+    const result = await runCommand({
       name: cmd.id,
       command: cmd.command,
       env: cmd.env,
       showOutputOnSuccess: cmd.showOutputOnSuccess,
       onMissing: cmd.onMissing,
-    };
-    const result = await runCommand(step);
+    });
     report(cmd.id, [result], {
       showOutputOnSuccess: cmd.showOutputOnSuccess === true,
       onMissing: cmd.onMissing,
@@ -81,11 +137,12 @@ export async function runVerify(
   return emitRun(
     cwd,
     buildRunReport({
-      command: "verify",
+      command: "run",
       startedAt,
       failed,
       steps,
-      verify: {
+      stage_id: stage.id,
+      selection: {
         changed_paths_count: changed.length,
         selected: runnable,
         always_on: alwaysOn,

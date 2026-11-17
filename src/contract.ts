@@ -1,4 +1,4 @@
-import type { AgentContract, AfterEditStep, EvolvingConfig } from "./types.ts";
+import type { AgentContract, EvolvingConfig } from "./types.ts";
 
 /** Recommended skip_when tokens for agents; free text still allowed in YAML. */
 export const SKIP_WHEN_VOCABULARY = [
@@ -7,6 +7,9 @@ export const SKIP_WHEN_VOCABULARY = [
   "no_behavior_change",
   "already_verified",
 ] as const;
+
+/** Recommended stage tags for agents; free text still allowed in YAML. */
+export const TAGS_VOCABULARY = ["needs-agent"] as const;
 
 /** Hard anti-patterns for consuming evolving JSON (explain json / contract). */
 export const AGENT_IO_DO_NOT = [
@@ -22,61 +25,52 @@ export const AGENT_IO_DO = [
   "Read the full stdout JSON object from evolving (no pipes)",
   "On failure, use failure[] / output_preview to locate the error; Read step.log for the full text",
   "If the agent view truncated stdout: evolving status (or status --full), then Read step.log — do not re-run to re-read",
-  "Start with evolving explain (map + next first step); work top-down — no CLI dumps full stages detail",
-  "Machine detail: explain prepare|verify. Guidance body: Read evolving.yml for the current step only",
+  "Start with evolving explain (map + next first step); work top-down through stages — no CLI dumps full stages detail",
+  "Machine detail: evolving explain run. Agent body: Read evolving.yml for the current stage only",
 ] as const;
 
-const DEFAULT_AFTER_EDIT: readonly AfterEditStep[] = ["prepare", "verify"];
-
 export const AGENT_CONTRACT: AgentContract = {
-  order: DEFAULT_AFTER_EDIT,
-  after_edit: DEFAULT_AFTER_EDIT,
-  prepare_writes: true,
-  verify_readonly: true,
-  finish_runs: "non-guidance stages",
-  guidance: "agent-evaluated; CLI does not execute",
+  stages_order: "document",
+  agent_stages: "no commands; agent-evaluated",
+  machine_stages: "has commands; CLI run/finish",
+  resume_on_fail: "nearest prior agent stage",
+  finish_runs: "all machine stages in order",
   protocol_source: "evolving explain",
   do_not_duplicate_in_downstream_docs: true,
-  do_not_hand_edit_when_prepare_exists: true,
   skip_when_vocabulary: SKIP_WHEN_VOCABULARY,
+  tags_vocabulary: TAGS_VOCABULARY,
 };
 
-/** Contract merged with this repo's after_edit (from evolving.yml). */
-export function agentContractFor(config: EvolvingConfig | null): AgentContract {
-  if (!config) return AGENT_CONTRACT;
-  return {
-    ...AGENT_CONTRACT,
-    order: config.after_edit,
-    after_edit: config.after_edit,
-  };
+/** Contract for this repo (config currently unused beyond future hooks). */
+export function agentContractFor(_config: EvolvingConfig | null): AgentContract {
+  return AGENT_CONTRACT;
 }
 
 /** Human/agent-readable protocol — sole source; downstream docs only point at explain. */
-export function agentContractText(config: EvolvingConfig | null = null): string {
-  const contract = agentContractFor(config);
-  const order = contract.after_edit.join(" → ");
+export function agentContractText(_config: EvolvingConfig | null = null): string {
   return `evolving agent contract
 =======================
 Protocol source: evolving explain (and this contract). Downstream AGENTS.md must only
 point agents at explain — do not duplicate these rules in the consumer repo.
 
-0. Start with: evolving explain (map + next). Work top-down. There is no CLI panorama —
-   neither explain nor evolving stages dumps every stage's body/commands at once.
-1. After editing code, run after_edit in order: ${order}
-   (typically: evolving prepare, then evolving verify).
-2. stdout is always one quiet JSON object. Never head/tail/tee/less/jq-pipe it.
-3. kind: guidance stages are for the agent; the CLI never executes them or evaluates skip_when.
-   Read evolving.yml for the current guidance step only (summary / refs / skip_when).
-4. evolving finish runs every non-guidance stage in order (prepare commands, verify commands, kind: run).
-5. Do not hand-edit formatting/lint when a prepare stage exists — run evolving prepare.
-6. On failure, read failure[] / log from the JSON report (or evolving status), then retry.
+0. Start with: evolving explain (map + next). Work top-down through stages. There is no
+   CLI panorama — neither explain nor evolving stages dumps every stage body/commands.
+1. stages document order is the only protocol axis. No kind / after_edit.
+2. Stages with commands are machine stages — run via evolving run <stage-id>.
+   Stages without commands are agent stages — Read evolving.yml for summary/refs/skip_when/tags.
+3. Put an agent "edit" stage where the agent should change code (e.g. after orient, before gates).
+4. stdout is always one quiet JSON object. Never head/tail/tee/less/jq-pipe it.
+5. evolving finish runs every machine stage in order (skips agent stages).
+6. On failure, evolving status suggests the nearest prior agent stage (typically edit), then re-walk.
 7. Full step output lives under .evolving/logs/ (path on each step.log). If your view
    truncated the JSON, run evolving status --full and Read the log — do not re-run to re-read.
 8. skip_when is agent-evaluated. Recommended tokens: ${SKIP_WHEN_VOCABULARY.join(", ")}.
-9. verify.commands is one ordered list. Omit run_in_file_change to always run; otherwise
-   select via git paths. Composition: command://id refs (no also / check / always / fix).
-10. Machine detail on demand: evolving explain prepare|verify. evolving stages is a
-    minimal id+kind map (+ first), not a full timeline dump.
+9. tags are optional semantic labels on any stage (CLI never enforces). Recommended:
+   ${TAGS_VOCABULARY.join(", ")}. Read evolving.yml for the current step to see tags —
+   evolving stages / explain stages maps stay id+runnable only (no tags in the map).
+10. Machine stage commands: omit run_in_file_change to always run; otherwise select via git paths.
+   Composition: command://id refs within the same stage.
+11. Machine detail on demand: evolving explain run. evolving stages is a minimal id+runnable map.
 
 do:
 ${AGENT_IO_DO.map((line) => `- ${line}`).join("\n")}

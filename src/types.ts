@@ -1,11 +1,13 @@
-/** A single shell invocation declared in evolving.yml. */
-export interface GateCommand {
-  /** argv: first element is the executable. */
+/** A single shell invocation declared under a stage's commands. */
+export interface StageCommand {
+  id: string;
+  name: string;
+  /** argv: first element is the executable, or only command://id refs. */
   command: readonly string[];
-  /** Optional display name (defaults to a joined command). */
-  name?: string;
+  /** Git path patterns; omit to always run this command. */
+  run_in_file_change?: readonly string[];
   env?: Readonly<Record<string, string>>;
-  /** When true, non-empty stdout/stderr is printed even on success (e.g. lint warnings). */
+  /** When true, non-empty stdout/stderr is printed even on success. */
   showOutputOnSuccess?: boolean;
   /**
    * When the executable is not on PATH (`spawn` ENOENT): `warn` prints a
@@ -15,59 +17,26 @@ export interface GateCommand {
 }
 
 /**
- * One verify list item. `command` is either a real argv or only `command://id` refs.
- * Optional `run_in_file_change` selects via git; omit to always run.
+ * One checklist node. Document order is the protocol axis.
+ * - Has `commands` → machine stage (CLI can run).
+ * - No `commands` → agent stage (read summary/refs/tags; CLI does not spawn).
  */
-export interface VerifyCommand {
+export interface Stage {
   id: string;
-  name: string;
-  command: readonly string[];
-  run_in_file_change?: readonly string[];
-  env?: Readonly<Record<string, string>>;
-  showOutputOnSuccess?: boolean;
-  onMissing?: "warn";
-}
-
-/** Agent-only checklist step; CLI never executes. */
-export interface GuidanceStage {
-  id: string;
-  kind: "guidance";
   summary?: string;
   refs?: readonly string[];
   /** Documentation-only skip hint for agents; the CLI never evaluates it. */
   skip_when?: string;
+  /**
+   * Optional semantic labels for agents; the CLI never enforces them.
+   * Recommended tokens live on AgentContract.tags_vocabulary.
+   */
+  tags?: readonly string[];
+  commands?: readonly StageCommand[];
 }
-
-/** Write-allowed machine stage (format / lint:fix). At most one per config. */
-export interface PrepareStage {
-  id: string;
-  kind: "prepare";
-  commands: readonly GateCommand[];
-}
-
-/** Read-only verify stage. Exactly one per config. */
-export interface VerifyStage {
-  id: string;
-  kind: "verify";
-  commands: readonly VerifyCommand[];
-}
-
-/** One-shot machine command included by finish (e.g. codegen). */
-export interface RunStage {
-  id: string;
-  kind: "run";
-  command: readonly string[];
-  env?: Readonly<Record<string, string>>;
-}
-
-export type Stage = GuidanceStage | PrepareStage | VerifyStage | RunStage;
-
-export type AfterEditStep = "prepare" | "verify";
 
 export interface EvolvingConfig {
   version: 2;
-  /** Protocol order after code edits; surfaced by explain/contract. */
-  after_edit: readonly AfterEditStep[];
   stages: readonly Stage[];
 }
 
@@ -80,7 +49,7 @@ export interface StepResult {
   missingExecutable?: boolean;
 }
 
-export type RunCommandName = "prepare" | "verify" | "finish";
+export type RunCommandName = "run" | "finish";
 
 /** One gate/command step as exposed to agents (JSON stdout / last-run). */
 export interface ReportStep {
@@ -100,7 +69,7 @@ export interface FailureSummary {
   output_preview?: string;
 }
 
-export interface VerifyReportMeta {
+export interface SelectionReportMeta {
   changed_paths_count: number;
   selected: readonly string[];
   /** Ids with no run_in_file_change that were in the selection. */
@@ -117,36 +86,30 @@ export interface RunReport {
   failed: readonly string[];
   /** Structured failures (name / log / output_preview). Empty on success. */
   failure: readonly FailureSummary[];
+  /** Stage that was run (`run`); omitted for finish aggregate. */
+  stage_id?: string;
   /** Absolute path to .evolving/last-run.json after persist. */
   last_run_path?: string;
   step_count?: number;
   passed_count?: number;
-  verify?: VerifyReportMeta;
+  selection?: SelectionReportMeta;
   finished_at?: string;
   cwd?: string;
 }
 
 export interface AgentContract {
-  order: readonly AfterEditStep[];
-  after_edit: readonly AfterEditStep[];
-  prepare_writes: true;
-  verify_readonly: true;
-  finish_runs: "non-guidance stages";
-  guidance: "agent-evaluated; CLI does not execute";
+  stages_order: "document";
+  agent_stages: "no commands; agent-evaluated";
+  machine_stages: "has commands; CLI run/finish";
+  resume_on_fail: "nearest prior agent stage";
+  finish_runs: "all machine stages in order";
   protocol_source: "evolving explain";
   do_not_duplicate_in_downstream_docs: true;
-  do_not_hand_edit_when_prepare_exists: true;
   skip_when_vocabulary: readonly string[];
+  tags_vocabulary: readonly string[];
 }
 
-export interface GateCommandView {
-  name?: string;
-  command: readonly string[];
-  onMissing?: "warn";
-  showOutputOnSuccess?: boolean;
-}
-
-export interface VerifyCommandView {
+export interface StageCommandView {
   id: string;
   name: string;
   command: readonly string[];
@@ -155,20 +118,19 @@ export interface VerifyCommandView {
   showOutputOnSuccess?: boolean;
 }
 
-/** Minimal stage row — progressive map only; no guidance body or gate argv. */
+/** Minimal stage row — progressive map only; no agent body or command argv. */
 export interface StageView {
   id: string;
-  kind: Stage["kind"];
+  runnable: boolean;
 }
 
 export interface StagesView {
   evolving: 1;
   command: "stages";
   contract: AgentContract;
-  after_edit: readonly AfterEditStep[];
-  /** Ordered id+kind map — never a full detail dump. */
+  /** Ordered id+runnable map — never a full detail dump. */
   stages: readonly StageView[];
-  /** First stage to consider (same id+kind shape; no panorama). */
+  /** First stage to consider (same shape; no panorama). */
   first: StageView | null;
   progressive: string;
 }
@@ -188,28 +150,25 @@ export interface StatusReport {
 
 export type ExplainTopicId =
   | "contract"
-  | "prepare"
-  | "verify"
+  | "run"
   | "finish"
   | "stages"
   | "status"
   | "json"
-  | "guidance";
+  | "agent";
 
 export interface ExplainTopicRef {
   id: ExplainTopicId;
   summary: string;
 }
 
-/** Lightweight project snapshot for explain index (no gate argv / guidance body). */
+/** Lightweight project snapshot for explain index (no command argv / agent body). */
 export interface ExplainProjectSummary {
   stage_ids: readonly string[];
-  after_edit: readonly AfterEditStep[];
-  command_ids: readonly string[];
-  has_prepare: boolean;
-  prepare_count: number;
-  verify_count: number;
-  always_on_count: number;
+  agent_stage_ids: readonly string[];
+  machine_stage_ids: readonly string[];
+  first_stage_id: string | null;
+  first_machine_stage_id: string | null;
 }
 
 export interface ExplainReport {

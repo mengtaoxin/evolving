@@ -1,21 +1,17 @@
 version: 2
 
-after_edit: [prepare, verify]
-
 stages:
   - id: orient
-    kind: guidance
     summary: Locate entry files for this repo
     refs: ["docs/overview.md"]
     skip_when: entry_file_known
 
-  - id: tests
-    kind: guidance
-    summary: Red → Green when behavior is in scope
-    skip_when: docs_only
+  - id: edit
+    summary: Change code following TDD
+    refs: ["docs/tdd.md"]
+    tags: [needs-agent]
 
   - id: prepare
-    kind: prepare
     commands:
       - name: format
         command: ["npm", "run", "format"]
@@ -23,7 +19,6 @@ stages:
         command: ["npm", "run", "lint:fix"]
 
   - id: verify
-    kind: verify
     commands:
       - name: format:check
         command: ["npm", "run", "format:check"]
@@ -48,5 +43,4 @@ stages:
         command: ["npm", "run", "test:e2e"]
 
   - id: docs
-    kind: guidance
     summary: Update owning docs if a contract changed

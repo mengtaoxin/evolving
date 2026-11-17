@@ -2,23 +2,21 @@
 import { runFinish } from "./finish.ts";
 import { printExplain, resolveExplain } from "./explain.ts";
 import { loadConfig } from "./load-config.ts";
-import { runPrepare } from "./prepare.ts";
 import { printJson } from "./report.ts";
+import { runStage } from "./run-stage.ts";
 import { printStages } from "./stages.ts";
 import { printStatus } from "./status.ts";
-import { runVerify } from "./verify.ts";
 
 const USAGE = `Usage:
   evolving explain [topic] [--config path]
   evolving stages [--config path]
-  evolving prepare [--config path]
-  evolving verify [command-id|all...] [--e2e] [--config path]
+  evolving run <stage-id> [command-id|all...] [--config path]
   evolving finish [--config path]
   evolving status [--full] [--config path]
   evolving agent-contract   # alias: explain contract
 
 For agents: evolving explain (sole protocol source).
-prepare may write; verify is read-only.
+Stages with commands are runnable; stages without are agent-only.
 stdout is always one JSON object.
 `;
 
@@ -54,13 +52,12 @@ async function main(): Promise<void> {
     return;
   }
 
-  if (command === "check") {
+  if (command === "prepare" || command === "verify" || command === "check") {
     printJson({
       evolving: 1,
       ok: false,
       exit_code: 2,
-      error:
-        "evolving check was removed; use evolving verify (always-on commands have no run_in_file_change)",
+      error: `evolving ${command} was removed; use evolving run <stage-id> (or evolving finish)`,
     });
     process.exitCode = 2;
     return;
@@ -84,12 +81,23 @@ async function main(): Promise<void> {
     case "stages":
       printStages(config);
       return;
-    case "prepare":
-      process.exitCode = (await runPrepare(cwd, config)).exit_code;
+    case "run": {
+      const stageId = rest.find((a) => !a.startsWith("--"));
+      if (!stageId) {
+        printJson({
+          evolving: 1,
+          ok: false,
+          exit_code: 2,
+          error: "evolving run requires a stage id. Usage: evolving run <stage-id> [command-id|all...]",
+        });
+        process.exitCode = 2;
+        return;
+      }
+      const index = rest.indexOf(stageId);
+      if (index !== -1) rest.splice(index, 1);
+      process.exitCode = (await runStage(cwd, config, stageId, rest)).exit_code;
       return;
-    case "verify":
-      process.exitCode = (await runVerify(cwd, config, rest)).exit_code;
-      return;
+    }
     case "finish":
       process.exitCode = (await runFinish(cwd, config)).exit_code;
       return;

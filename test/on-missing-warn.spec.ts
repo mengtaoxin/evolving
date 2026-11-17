@@ -2,53 +2,52 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadConfig, parseConfig } from "../src/load-config.ts";
-import { verifyCommands } from "../src/stages-access.ts";
-import { runVerify } from "../src/verify.ts";
-import { minimalV2Yaml } from "./helpers/v2-yaml.ts";
+import { findStage, stageCommands } from "../src/stages-access.ts";
+import { runStage } from "../src/run-stage.ts";
+import { machineStageYaml, minimalV2Yaml } from "./helpers/v2-yaml.ts";
 
 const MISSING_BIN = "evolving-not-installed-bin-9f3a2c";
 
-function writeVerifyConfig(dir: string, verifyCommandsYaml: string): void {
-  writeFileSync(join(dir, "evolving.yml"), minimalV2Yaml({ verifyCommandsYaml }));
+function writeVerifyConfig(dir: string, commandsYaml: string): void {
+  writeFileSync(
+    join(dir, "evolving.yml"),
+    minimalV2Yaml({ stagesYaml: machineStageYaml("verify", commandsYaml) }),
+  );
 }
 
-async function captureVerify(dir: string) {
+async function captureRun(dir: string) {
   const originalLog = console.log;
   console.log = () => {};
   try {
-    return await runVerify(dir, loadConfig(dir), []);
+    return await runStage(dir, loadConfig(dir), "verify", []);
   } finally {
     console.log = originalLog;
   }
 }
 
 describe("onMissing: warn", () => {
-  it("parses onMissing warn on a verify command", () => {
+  it("parses onMissing warn on a stage command", () => {
     const config = parseConfig({
       version: 2,
-      after_edit: ["prepare", "verify"],
       stages: [
         {
           id: "verify",
-          kind: "verify",
           commands: [
             { name: "gitleaks", command: ["gitleaks", "detect"], onMissing: "warn" },
           ],
         },
       ],
     });
-    expect(verifyCommands(config)[0]?.onMissing).toBe("warn");
+    expect(stageCommands(findStage(config, "verify")!)[0]?.onMissing).toBe("warn");
   });
 
   it("rejects unknown onMissing values", () => {
     expect(() =>
       parseConfig({
         version: 2,
-        after_edit: ["prepare", "verify"],
         stages: [
           {
             id: "verify",
-            kind: "verify",
             commands: [{ name: "ok", command: ["true"], onMissing: "skip" }],
           },
         ],
@@ -56,7 +55,7 @@ describe("onMissing: warn", () => {
     ).toThrow(/onMissing/);
   });
 
-  it("warns and passes verify when the executable is missing", async () => {
+  it("warns and passes when the executable is missing", async () => {
     const dir = mkdtempSync(join(tmpdir(), "evolving-on-missing-"));
     writeVerifyConfig(
       dir,
@@ -65,7 +64,7 @@ describe("onMissing: warn", () => {
         onMissing: warn
 `,
     );
-    const report = await captureVerify(dir);
+    const report = await captureRun(dir);
     expect(report.exit_code).toBe(0);
     expect(report.ok).toBe(true);
     expect(report.failed).toEqual([]);
@@ -73,7 +72,7 @@ describe("onMissing: warn", () => {
     expect(report.steps[0]?.ok).toBe(true);
   });
 
-  it("still fails verify when a missing executable has no onMissing", async () => {
+  it("still fails when a missing executable has no onMissing", async () => {
     const dir = mkdtempSync(join(tmpdir(), "evolving-on-missing-fail-"));
     writeVerifyConfig(
       dir,
@@ -81,7 +80,7 @@ describe("onMissing: warn", () => {
         command: ["${MISSING_BIN}"]
 `,
     );
-    const report = await captureVerify(dir);
+    const report = await captureRun(dir);
     expect(report.exit_code).toBe(1);
     expect(report.failed).toContain("secrets");
     expect(report.steps[0]?.missing_executable).toBe(true);
@@ -97,7 +96,7 @@ describe("onMissing: warn", () => {
         onMissing: warn
 `,
     );
-    const report = await captureVerify(dir);
+    const report = await captureRun(dir);
     expect(report.exit_code).toBe(1);
     expect(report.failed).toContain("secrets");
   });

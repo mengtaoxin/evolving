@@ -1,5 +1,6 @@
 import { agentContractFor } from "./contract.ts";
 import { printJson } from "./report.ts";
+import { isMachineStage } from "./stages-access.ts";
 import type { EvolvingConfig, StageView, StagesView } from "./types.ts";
 
 export function buildStagesView(config: EvolvingConfig): StagesView {
@@ -8,11 +9,10 @@ export function buildStagesView(config: EvolvingConfig): StagesView {
     evolving: 1,
     command: "stages",
     contract: agentContractFor(config),
-    after_edit: config.after_edit,
     stages,
     first: stages[0] ?? null,
     progressive:
-      "Minimal id+kind map + first only — no panorama. Follow top-down; machine detail via explain prepare|verify; guidance body via Read evolving.yml for the current step.",
+      "Minimal id+runnable map + first only — no panorama. Follow top-down; machine detail via explain run; agent body via Read evolving.yml for the current step.",
   };
 }
 
@@ -21,5 +21,5 @@ export function printStages(config: EvolvingConfig): void {
 }
 
 function stageRow(stage: EvolvingConfig["stages"][number]): StageView {
-  return { id: stage.id, kind: stage.kind };
+  return { id: stage.id, runnable: isMachineStage(stage) };
 }

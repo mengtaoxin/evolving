@@ -6,8 +6,8 @@ import type {
   ReportStep,
   RunCommandName,
   RunReport,
+  SelectionReportMeta,
   StepResult,
-  VerifyReportMeta,
 } from "./types.ts";
 
 const MAX_PRINTED_LINES = 40;
@@ -139,7 +139,8 @@ export function buildRunReport(input: {
   startedAt: number;
   failed: readonly string[];
   steps: readonly ReportStep[];
-  verify?: VerifyReportMeta;
+  selection?: SelectionReportMeta;
+  stage_id?: string;
   exitCode?: number;
 }): RunReport {
   const seconds = Number(((Date.now() - input.startedAt) / 1000).toFixed(1));
@@ -156,7 +157,8 @@ export function buildRunReport(input: {
     failure,
     step_count: input.steps.length,
     passed_count: input.steps.filter((s) => s.ok).length,
-    ...(input.verify ? { verify: input.verify } : {}),
+    ...(input.stage_id ? { stage_id: input.stage_id } : {}),
+    ...(input.selection ? { selection: input.selection } : {}),
   };
 }
 
@@ -172,8 +174,9 @@ export function slimSuccessReport(report: RunReport): Record<string, unknown> {
     failure: [],
     step_count: report.step_count ?? report.steps.length,
     passed_count: report.passed_count ?? report.steps.filter((s) => s.ok).length,
+    ...(report.stage_id ? { stage_id: report.stage_id } : {}),
     ...(report.last_run_path ? { last_run_path: report.last_run_path } : {}),
-    ...(report.verify ? { verify: report.verify } : {}),
+    ...(report.selection ? { selection: report.selection } : {}),
     ...(report.finished_at ? { finished_at: report.finished_at } : {}),
     ...(report.cwd ? { cwd: report.cwd } : {}),
   };

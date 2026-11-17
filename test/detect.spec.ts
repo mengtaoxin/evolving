@@ -4,11 +4,10 @@ import {
   invalidCommandArgs,
   runnableSelectedIds,
 } from "../src/detect.ts";
-import type { VerifyStage } from "../src/types.ts";
+import type { Stage } from "../src/types.ts";
 
-const stage: VerifyStage = {
+const stage: Stage = {
   id: "verify",
-  kind: "verify",
   commands: [
     {
       id: "format:check",
@@ -88,7 +87,7 @@ describe("resolveSelectedCommandIds", () => {
       "test:lib",
       "test:e2e",
     ]);
-    expect(resolveSelectedCommandIds(stage, ["all"], []).length).toBe(stage.commands.length);
+    expect(resolveSelectedCommandIds(stage, ["all"], []).length).toBe(stage.commands!.length);
   });
 });
 

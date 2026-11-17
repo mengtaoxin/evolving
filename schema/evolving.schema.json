@@ -4,51 +4,18 @@
   "title": "evolving.yml",
   "type": "object",
   "additionalProperties": false,
-  "required": ["version", "after_edit", "stages"],
+  "required": ["version", "stages"],
   "properties": {
     "version": { "const": 2 },
-    "after_edit": {
-      "type": "array",
-      "const": ["prepare", "verify"],
-      "description": "Protocol after code edits; surfaced by evolving explain / contract. Downstream docs must not restate this."
-    },
     "stages": {
       "type": "array",
       "minItems": 1,
-      "items": {
-        "oneOf": [
-          { "$ref": "#/$defs/guidanceStage" },
-          { "$ref": "#/$defs/prepareStage" },
-          { "$ref": "#/$defs/verifyStage" },
-          { "$ref": "#/$defs/runStage" }
-        ]
-      }
+      "items": { "$ref": "#/$defs/stage" },
+      "description": "Ordered checklist. Document order is the protocol axis. Stages with commands are machine-runnable; stages without are agent-only."
     }
   },
   "$defs": {
-    "gateCommand": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["command"],
-      "properties": {
-        "command": {
-          "type": "array",
-          "minItems": 1,
-          "items": { "type": "string", "minLength": 1 }
-        },
-        "name": { "type": "string", "minLength": 1 },
-        "env": {
-          "type": "object",
-          "additionalProperties": { "type": "string" }
-        },
-        "showOutputOnSuccess": { "type": "boolean" },
-        "onMissing": {
-          "const": "warn",
-          "description": "If the executable is not on PATH (spawn ENOENT), warn and continue; other failures still fail the gate."
-        }
-      }
-    },
-    "verifyCommand": {
+    "stageCommand": {
       "type": "object",
       "additionalProperties": false,
       "required": ["name", "command"],
@@ -63,29 +30,31 @@
           "type": "array",
           "minItems": 1,
           "items": { "type": "string", "minLength": 1 },
-          "description": "Real argv, or only command://id refs that expand to other verify commands."
+          "description": "Real argv, or only command://id refs that expand to other commands in the same stage."
         },
         "run_in_file_change": {
           "type": "array",
           "minItems": 1,
           "items": { "type": "string", "minLength": 1 },
-          "description": "Git path patterns; omit to always run this command on verify."
+          "description": "Git path patterns; omit to always run this command."
         },
         "env": {
           "type": "object",
           "additionalProperties": { "type": "string" }
         },
         "showOutputOnSuccess": { "type": "boolean" },
-        "onMissing": { "const": "warn" }
+        "onMissing": {
+          "const": "warn",
+          "description": "If the executable is not on PATH (spawn ENOENT), warn and continue; other failures still fail."
+        }
       }
     },
-    "guidanceStage": {
+    "stage": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "kind"],
+      "required": ["id"],
       "properties": {
         "id": { "type": "string", "minLength": 1 },
-        "kind": { "const": "guidance" },
         "summary": { "type": "string" },
         "refs": {
           "type": "array",
@@ -95,53 +64,18 @@
           "type": "string",
           "minLength": 1,
           "description": "Agent-evaluated skip hint; the CLI never evaluates it. Recommended tokens: entry_file_known, docs_only, no_behavior_change, already_verified. Free text is allowed."
-        }
-      }
-    },
-    "prepareStage": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["id", "kind", "commands"],
-      "properties": {
-        "id": { "type": "string", "minLength": 1 },
-        "kind": { "const": "prepare" },
-        "commands": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/gateCommand" },
-          "description": "Write-allowed commands (format / lint:fix). Run via evolving prepare; never by verify."
-        }
-      }
-    },
-    "verifyStage": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["id", "kind", "commands"],
-      "properties": {
-        "id": { "type": "string", "minLength": 1 },
-        "kind": { "const": "verify" },
-        "commands": {
-          "type": "array",
-          "minItems": 1,
-          "items": { "$ref": "#/$defs/verifyCommand" },
-          "description": "Read-only commands in order. Omit run_in_file_change to always run; otherwise select via git paths. Composition via command://id."
-        }
-      }
-    },
-    "runStage": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["id", "kind", "command"],
-      "properties": {
-        "id": { "type": "string", "minLength": 1 },
-        "kind": { "const": "run" },
-        "command": {
-          "type": "array",
-          "minItems": 1,
-          "items": { "type": "string", "minLength": 1 }
         },
-        "env": {
-          "type": "object",
-          "additionalProperties": { "type": "string" }
+        "tags": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Optional semantic labels for agents (not enforced by the CLI). Recommended: needs-agent. Free text is allowed. Progressive stages map does not include tags — Read evolving.yml for the current step."
+        },
+        "commands": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/stageCommand" },
+          "description": "When present, this is a machine stage. Omit for agent-only stages (edit checkpoint, docs, orient)."
         }
       }
     }

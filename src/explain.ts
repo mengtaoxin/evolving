@@ -4,9 +4,10 @@ import {
   agentContractFor,
   agentContractText,
   SKIP_WHEN_VOCABULARY,
+  TAGS_VOCABULARY,
 } from "./contract.ts";
 import { printJson } from "./report.ts";
-import { prepareCommands, verifyStage } from "./stages-access.ts";
+import { isAgentStage, isMachineStage, machineStages } from "./stages-access.ts";
 import { buildStatus } from "./status.ts";
 import type {
   EvolvingConfig,
@@ -14,9 +15,8 @@ import type {
   ExplainReport,
   ExplainTopicId,
   ExplainTopicRef,
-  GateCommand,
+  StageCommand,
   StageView,
-  VerifyCommand,
 } from "./types.ts";
 import { isRefOnlyCommand } from "./types.ts";
 
@@ -26,14 +26,13 @@ const AGENT_IO_DETAIL = {
 } as const;
 
 export const EXPLAIN_TOPICS: readonly ExplainTopicRef[] = [
-  { id: "contract", summary: "Fixed agent protocol (after_edit, guidance, finish)" },
-  { id: "prepare", summary: "Write-allowed prepare stage (format / lint:fix)" },
-  { id: "verify", summary: "Ordered commands: always-on + git path select + command://" },
-  { id: "finish", summary: "Run all non-guidance stages in order" },
-  { id: "stages", summary: "Minimal timeline map (id+kind) — no panorama" },
+  { id: "contract", summary: "Fixed agent protocol (ordered stages, run, finish, resume)" },
+  { id: "run", summary: "Run one stage by id (commands + git select + command://)" },
+  { id: "finish", summary: "Run all machine stages in document order" },
+  { id: "stages", summary: "Minimal timeline map (id+runnable) — no panorama" },
   { id: "status", summary: "Resume / recover truncated view from .evolving/last-run.json + logs" },
   { id: "json", summary: "Quiet JSON stdout; full step text under .evolving/logs/" },
-  { id: "guidance", summary: "Guidance id list — body via Read evolving.yml top-down" },
+  { id: "agent", summary: "Agent stage ids — body via Read evolving.yml top-down" },
 ];
 
 const TOPIC_IDS = new Set(EXPLAIN_TOPICS.map((t) => t.id));
@@ -50,13 +49,12 @@ export function buildExplainIndex(
   const contract = agentContractFor(config);
   const project = config ? summarizeProject(config) : null;
   const next = suggestIndexNext(cwd, project);
-  const afterEdit = contract.after_edit.map((s) => `evolving ${s}`);
   return {
     evolving: 1,
     command: "explain",
     topic: "index",
     summary:
-      "evolving is the sole agent protocol for this repo (not an agent runtime). Downstream docs should only point here — do not duplicate rules in AGENTS.md. Quiet JSON stdout: never pipe/head/tail/tee/less/jq — read the full object. Success is slim; failures include output_preview; full step text is on step.log under .evolving/logs/. If your view truncated output, evolving status --full then Read the log — do not re-run to re-read. After edits follow after_edit (prepare then verify). Index is a map + next first step — never a full stages detail dump (no CLI panorama).",
+      "evolving is the sole agent protocol for this repo (not an agent runtime). Downstream docs should only point here — do not duplicate rules in AGENTS.md. Quiet JSON stdout: never pipe/head/tail/tee/less/jq — read the full object. Success is slim; failures include output_preview; full step text is on step.log under .evolving/logs/. If your view truncated output, evolving status --full then Read the log — do not re-run to re-read. Walk stages top-down; on failure status jumps to the nearest prior agent stage (typically edit). Index is a map + next first step — never a full stages detail dump (no CLI panorama).",
     ok: true,
     exit_code: 0,
     contract,
@@ -65,19 +63,18 @@ export function buildExplainIndex(
     detail: {
       protocol_source: "evolving explain",
       do_not_duplicate_in_downstream_docs: true,
-      after_edit: contract.after_edit,
-      minimal_loop: afterEdit,
+      stages_order: "document",
       on_failure: "evolving status",
       on_truncated_view: "evolving status --full, then Read step.log — never re-run only to re-read",
       never_pipe: true,
       drill_when: "first time using evolving, or when a specific machine topic is unclear",
       progressive:
-        "index = map (stage_ids) + next first step → act top-down. Drill explain prepare|verify for machine detail. Guidance body: Read evolving.yml for the current step only. No CLI dumps the full timeline detail (not explain, not evolving stages).",
+        "index = map (stage_ids) + next first step → act top-down. Drill explain run for machine detail. Agent body: Read evolving.yml for the current step only. No CLI dumps the full timeline detail (not explain, not evolving stages).",
       no_panorama: true,
     },
     next,
     ...(configError ? { error: configError } : {}),
-    how_to_run: [...afterEdit, "evolving status"],
+    how_to_run: ["evolving stages", "evolving run <stage-id>", "evolving status"],
   };
 }
 
@@ -96,76 +93,69 @@ export function buildExplainTopic(
           ...AGENT_IO_DETAIL,
         },
         how_to_run: ["evolving explain contract"],
-        see_also: ["prepare", "verify", "guidance", "json"],
+        see_also: ["run", "agent", "json"],
         text: agentContractText(config),
       });
-    case "prepare":
+    case "run": {
+      const machines = config ? machineStages(config) : [];
       return topicBase(topic, config, {
         summary:
-          "Write-allowed prepare stage. Run after edits, before verify. Prefer this over hand-editing format/lint.",
+          "Run one stage: evolving run <stage-id> [command-id|all...]. Machine stages select always-on + git path matches, then expand command://. Agent stages return no commands to run.",
         detail: {
-          writes: true,
-          commands: config ? prepareCommands(config).map(gateDetail) : null,
-          note: "verify never runs these commands.",
-        },
-        how_to_run: ["evolving prepare"],
-        see_also: ["verify", "json"],
-      });
-    case "verify": {
-      const gate = config ? verifyStage(config) : null;
-      return topicBase(topic, config, {
-        summary:
-          "Runs verify.commands in order: always-on (no run_in_file_change), git path matches, then expands command:// refs.",
-        detail: {
-          readonly: true,
-          commands: gate ? gate.commands.map(verifyDetail) : null,
+          stages: machines.map((s) => ({
+            id: s.id,
+            commands: s.commands.map(commandDetail),
+          })),
           args: {
-            ids: gate ? gate.commands.map((c) => c.id) : [],
-            all: "run every command",
+            stage_id: "required",
+            command_ids: "optional subset or all",
           },
         },
-        how_to_run: ["evolving verify", "evolving verify all"],
-        see_also: ["prepare", "status", "json"],
+        how_to_run: ["evolving run <stage-id>", "evolving run <stage-id> all"],
+        see_also: ["finish", "status", "json"],
       });
     }
     case "finish":
       return topicBase(topic, config, {
-        summary:
-          "Runs every non-guidance stage in order: prepare commands, full verify, then kind: run extras. Skips guidance by design.",
+        summary: "Runs every machine stage (has commands) in document order. Skips agent stages.",
         detail: {
           machine_stages: config
-            ? config.stages
-                .filter((s) => s.kind !== "guidance")
-                .map((s): StageView => ({ id: s.id, kind: s.kind }))
+            ? machineStages(config).map((s): StageView => ({
+                id: s.id,
+                runnable: true,
+              }))
             : null,
-          guidance_skipped: config
-            ? config.stages.filter((s) => s.kind === "guidance").map((s) => s.id)
+          agent_skipped: config
+            ? config.stages.filter(isAgentStage).map((s) => s.id)
             : null,
         },
         how_to_run: ["evolving finish"],
-        see_also: ["stages", "prepare", "verify", "guidance"],
+        see_also: ["stages", "run", "agent"],
       });
     case "stages": {
-      const rows = config ? config.stages.map((s): StageView => ({ id: s.id, kind: s.kind })) : null;
+      const rows = config
+        ? config.stages.map(
+            (s): StageView => ({ id: s.id, runnable: isMachineStage(s) }),
+          )
+        : null;
       return topicBase(topic, config, {
         summary:
-          "Minimal progressive map (id+kind + first). Not a detail dump — no summary/skip_when/refs/commands here. Work top-down; machine detail via explain prepare|verify; guidance via Read evolving.yml for the current step.",
+          "Minimal progressive map (id+runnable + first). Not a detail dump — no summary/skip_when/refs/tags/commands here. Work top-down; machine detail via explain run; agent body via Read evolving.yml for the current step.",
         detail: {
-          after_edit: config?.after_edit ?? null,
           stages: rows,
           first: rows?.[0] ?? null,
           no_panorama: true,
-          guidance_body: "Read evolving.yml for the current guidance step only",
-          machine_detail: "evolving explain prepare|verify",
+          agent_body: "Read evolving.yml for the current agent step only",
+          machine_detail: "evolving explain run",
         },
         how_to_run: ["evolving explain stages", "evolving stages"],
-        see_also: ["guidance", "finish", "prepare", "verify"],
+        see_also: ["agent", "finish", "run"],
       });
     }
     case "status":
       return topicBase(topic, config, {
         summary:
-          "Reads .evolving/last-run.json and suggests next. Also the recovery path when the agent view truncated a long run — do not re-run only to re-read output.",
+          "Reads .evolving/last-run.json and suggests next. On failure, next is the nearest prior agent stage (typically edit), then re-run. Also the recovery path when the agent view truncated a long run.",
         detail: {
           path: ".evolving/last-run.json",
           logs_dir: ".evolving/logs/",
@@ -174,11 +164,10 @@ export function buildExplainTopic(
           full: "status --full embeds last_run (each step.log points at .evolving/logs/)",
           on_truncated_view:
             "evolving status --full, then Read step.log — never head/tail evolving or re-run to re-read",
-          always_on_next:
-            "If an always-on verify command failed, next is prepare then full verify",
+          resume_on_fail: "nearest prior agent stage (no commands)",
         },
         how_to_run: ["evolving status", "evolving status --full"],
-        see_also: ["json", "prepare", "verify"],
+        see_also: ["json", "run"],
       });
     case "json":
       return topicBase(topic, config, {
@@ -195,8 +184,9 @@ export function buildExplainTopic(
             "steps",
             "failed",
             "failure",
+            "stage_id",
             "last_run_path",
-            "verify",
+            "selection",
             "log",
             "output_preview",
           ],
@@ -216,26 +206,26 @@ export function buildExplainTopic(
             "next",
           ],
         },
-        how_to_run: [
-          "evolving explain",
-          "evolving prepare",
-          "evolving verify",
-          "evolving status",
-        ],
+        how_to_run: ["evolving explain", "evolving run <stage-id>", "evolving status"],
         see_also: ["status", "contract"],
       });
-    case "guidance":
+    case "agent":
       return topicBase(topic, config, {
         summary:
-          "kind: guidance stages and skip_when are for the agent. The CLI never executes or evaluates them. This topic lists ids only — read evolving.yml for the current step's summary/refs/skip_when.",
+          "Agent stages have no commands. The CLI never executes or evaluates skip_when or tags. This topic lists ids only — read evolving.yml for the current step's summary/refs/skip_when/tags. Place an edit stage where the agent should change code; optional tags like needs-agent clarify intent.",
         detail: {
           skip_when_vocabulary: SKIP_WHEN_VOCABULARY,
-          guidance_stage_ids: config
-            ? config.stages.filter((s) => s.kind === "guidance").map((s) => s.id)
+          tags_vocabulary: TAGS_VOCABULARY,
+          agent_stage_ids: config
+            ? config.stages.filter(isAgentStage).map((s) => s.id)
             : null,
-          body: "Read evolving.yml for the current guidance step only — no CLI panorama",
+          body: "Read evolving.yml for the current agent step only (summary/refs/skip_when/tags) — no CLI panorama; stages map stays id+runnable",
+          edit_checkpoint:
+            "Put a no-commands stage (e.g. id: edit) before machine gates; status resumes there on failure",
+          tags:
+            "Optional labels on any stage; recommended needs-agent. CLI does not enforce. Not shown in evolving stages map.",
         },
-        how_to_run: ["evolving explain guidance"],
+        how_to_run: ["evolving explain agent"],
         see_also: ["stages", "finish", "contract"],
       });
   }
@@ -299,28 +289,18 @@ function topicBase(
 }
 
 function summarizeProject(config: EvolvingConfig): ExplainProjectSummary {
-  const prepare = prepareCommands(config);
-  const gate = verifyStage(config);
+  const agent_stage_ids = config.stages.filter(isAgentStage).map((s) => s.id);
+  const machine_stage_ids = machineStages(config).map((s) => s.id);
   return {
     stage_ids: config.stages.map((s) => s.id),
-    after_edit: config.after_edit,
-    command_ids: gate.commands.map((c) => c.id),
-    has_prepare: prepare.length > 0,
-    prepare_count: prepare.length,
-    verify_count: gate.commands.length,
-    always_on_count: gate.commands.filter((c) => !c.run_in_file_change).length,
+    agent_stage_ids,
+    machine_stage_ids,
+    first_stage_id: config.stages[0]?.id ?? null,
+    first_machine_stage_id: machine_stage_ids[0] ?? null,
   };
 }
 
-function gateDetail(step: GateCommand): Record<string, unknown> {
-  return {
-    ...(step.name ? { name: step.name } : {}),
-    command: step.command,
-    ...(step.onMissing ? { onMissing: step.onMissing } : {}),
-  };
-}
-
-function verifyDetail(cmd: VerifyCommand): Record<string, unknown> {
+function commandDetail(cmd: StageCommand): Record<string, unknown> {
   return {
     id: cmd.id,
     name: cmd.name,
@@ -331,7 +311,10 @@ function verifyDetail(cmd: VerifyCommand): Record<string, unknown> {
   };
 }
 
-function suggestIndexNext(cwd: string | undefined, project: ExplainProjectSummary | null): string[] {
+function suggestIndexNext(
+  cwd: string | undefined,
+  project: ExplainProjectSummary | null,
+): string[] {
   if (cwd) {
     const status = buildStatus(cwd);
     if (status.state === "failed" && status.next.length > 0) {
@@ -339,6 +322,6 @@ function suggestIndexNext(cwd: string | undefined, project: ExplainProjectSummar
     }
   }
   if (!project) return ["explain contract"];
-  if (project.has_prepare) return ["prepare"];
-  return ["verify"];
+  if (project.first_stage_id) return [project.first_stage_id];
+  return ["stages"];
 }

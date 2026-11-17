@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
-import { minimalV2Yaml } from "./helpers/v2-yaml.ts";
+import { agentStageYaml, machineStageYaml, minimalV2Yaml } from "./helpers/v2-yaml.ts";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const cliPath = join(repoRoot, "dist/cli.js");
@@ -39,26 +39,53 @@ describe("cli json default", () => {
     writeFileSync(
       join(dir, "evolving.yml"),
       minimalV2Yaml({
-        verifyCommandsYaml: `      - name: lint
+        stagesYaml: [
+          agentStageYaml("edit", { summary: "change code" }),
+          machineStageYaml(
+            "verify",
+            `      - name: lint
         command: ["node", "-e", "process.exit(1)"]`,
+          ),
+        ].join("\n"),
       }),
     );
-    const verify = runCli(["verify"], dir);
-    expect(verify.status).toBe(1);
+    const run = runCli(["run", "verify"], dir);
+    expect(run.status).toBe(1);
     const slim = runCli(["status"], dir);
     expect(JSON.parse(slim.stdout.trim()).last_run).toBeUndefined();
     const full = runCli(["status", "--full"], dir);
     const parsed = JSON.parse(full.stdout.trim());
-    expect(parsed.last_run?.command).toBe("verify");
+    expect(parsed.last_run?.command).toBe("run");
+    expect(parsed.last_run?.stage_id).toBe("verify");
     expect(parsed.failed).toContain("lint");
+    expect(parsed.next[0]).toBe("edit");
   });
 
-  it("check command is rejected", () => {
-    const dir = mkdtempSync(join(tmpdir(), "evolving-cli-check-gone-"));
-    const result = runCli(["check"], dir);
+  it("prepare/verify/check commands are rejected", () => {
+    const dir = mkdtempSync(join(tmpdir(), "evolving-cli-gone-"));
+    for (const cmd of ["prepare", "verify", "check"]) {
+      const result = runCli([cmd], dir);
+      expect(result.status).toBe(2);
+      const parsed = JSON.parse(result.stdout.trim());
+      expect(parsed.ok).toBe(false);
+      expect(parsed.error).toMatch(/was removed/i);
+    }
+  });
+
+  it("run requires a stage id", () => {
+    const dir = mkdtempSync(join(tmpdir(), "evolving-cli-run-"));
+    writeFileSync(
+      join(dir, "evolving.yml"),
+      minimalV2Yaml({
+        stagesYaml: machineStageYaml(
+          "verify",
+          `      - name: ok
+        command: ["true"]`,
+        ),
+      }),
+    );
+    const result = runCli(["run"], dir);
     expect(result.status).toBe(2);
-    const parsed = JSON.parse(result.stdout.trim());
-    expect(parsed.ok).toBe(false);
-    expect(parsed.error).toMatch(/check was removed/i);
+    expect(JSON.parse(result.stdout.trim()).error).toMatch(/requires a stage id/i);
   });
 });

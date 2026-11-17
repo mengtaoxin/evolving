@@ -3,37 +3,26 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { lastRunPath, logsDir } from "../src/last-run.ts";
 import { loadConfig } from "../src/load-config.ts";
-import { runPrepare } from "../src/prepare.ts";
 import { MAX_LOG_BYTES, outputPreview, writeStepLog } from "../src/report.ts";
+import { runStage } from "../src/run-stage.ts";
 import { buildStatus } from "../src/status.ts";
-import { runVerify } from "../src/verify.ts";
-import { minimalV2Yaml } from "./helpers/v2-yaml.ts";
+import { agentStageYaml, machineStageYaml, minimalV2Yaml } from "./helpers/v2-yaml.ts";
 
-function writeMinimal(
-  dir: string,
-  verifyCommandsYaml: string,
-  prepareCommandsYaml?: string,
-): void {
-  writeFileSync(
-    join(dir, "evolving.yml"),
-    minimalV2Yaml({
-      verifyCommandsYaml,
-      ...(prepareCommandsYaml !== undefined ? { prepareCommandsYaml } : {}),
-    }),
-  );
+function writeConfig(dir: string, stagesYaml: string): void {
+  writeFileSync(join(dir, "evolving.yml"), minimalV2Yaml({ stagesYaml }));
 }
 
 describe("json RunReport", () => {
-  it("returns structured JSON fields and writes last-run + success log on prepare", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "evolving-json-prepare-"));
-    writeMinimal(
+  it("returns structured JSON fields and writes last-run + success log on run", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "evolving-json-run-"));
+    writeConfig(
       dir,
-      `      - name: ok
-        command: ["true"]
-`,
-      `      - name: touch
+      machineStageYaml(
+        "prepare",
+        `      - name: touch
         command: ["node", "-e", "require('node:fs').writeFileSync('ok.txt','1')"]
 `,
+      ),
     );
     const lines: string[] = [];
     const original = console.log;
@@ -42,12 +31,13 @@ describe("json RunReport", () => {
     };
     let report;
     try {
-      report = await runPrepare(dir, loadConfig(dir));
+      report = await runStage(dir, loadConfig(dir), "prepare");
     } finally {
       console.log = original;
     }
     expect(report.evolving).toBe(1);
-    expect(report.command).toBe("prepare");
+    expect(report.command).toBe("run");
+    expect(report.stage_id).toBe("prepare");
     expect(report.ok).toBe(true);
     expect(report.exit_code).toBe(0);
     expect(report.steps[0]?.name).toBe("touch");
@@ -58,10 +48,11 @@ describe("json RunReport", () => {
     expect(report.failure).toEqual([]);
     expect(lines).toHaveLength(1);
     const printed = JSON.parse(lines[0] as string);
-    expect(printed.command).toBe("prepare");
+    expect(printed.command).toBe("run");
     expect(printed.ok).toBe(true);
     expect(printed.steps).toBeUndefined();
     expect(printed.step_count).toBe(1);
+    expect(printed.stage_id).toBe("prepare");
     expect(printed.last_run_path).toBe(lastRunPath(dir));
     const saved = JSON.parse(readFileSync(lastRunPath(dir), "utf8"));
     expect(saved.finished_at).toBeTruthy();
@@ -71,13 +62,19 @@ describe("json RunReport", () => {
     expect(saved.last_run_path).toBe(lastRunPath(dir));
   });
 
-  it("includes .evolving/logs path on failed verify steps and suggests prepare", async () => {
+  it("includes .evolving/logs path on failed steps and resumes to edit", async () => {
     const dir = mkdtempSync(join(tmpdir(), "evolving-json-fail-"));
-    writeMinimal(
+    writeConfig(
       dir,
-      `      - name: format:check
+      [
+        agentStageYaml("edit", { summary: "change code" }),
+        machineStageYaml(
+          "verify",
+          `      - name: format:check
         command: ["node", "-e", "console.error('Error: boom'); process.exit(1)"]
 `,
+        ),
+      ].join("\n"),
     );
     const lines: string[] = [];
     const original = console.log;
@@ -86,14 +83,13 @@ describe("json RunReport", () => {
     };
     let report;
     try {
-      report = await runVerify(dir, loadConfig(dir), []);
+      report = await runStage(dir, loadConfig(dir), "verify", []);
     } finally {
       console.log = original;
     }
     expect(report.ok).toBe(false);
     expect(report.failed).toContain("format:check");
     expect(report.failure[0]?.name).toBe("format:check");
-    expect(report.failure[0]).not.toHaveProperty("fix");
     expect(report.failure[0]?.log?.startsWith(logsDir(dir) + "/")).toBe(true);
     expect(report.failure[0]?.log?.endsWith("-format-check.log")).toBe(true);
     expect(existsSync(report.failure[0]!.log!)).toBe(true);
@@ -103,12 +99,11 @@ describe("json RunReport", () => {
     expect(report.steps[0]?.output_preview).toMatch(/Error/);
 
     const printed = JSON.parse(lines[0] as string);
-    expect(printed.failure[0]).not.toHaveProperty("fix");
     expect(printed.last_run_path).toBe(lastRunPath(dir));
 
     const status = buildStatus(dir);
     expect(status.state).toBe("failed");
-    expect(status.next).toEqual(["prepare", "verify"]);
+    expect(status.next).toEqual(["edit", "run verify"]);
     expect(status.last_run).toBeUndefined();
     expect(status.failure?.[0]?.name).toBe("format:check");
     expect(status.failure?.[0]?.log).toBe(report.failure[0]?.log);
