@@ -1,6 +1,6 @@
 {
   "name": "@mengtaoxin/evolving",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "Declarative ordered stages checklist and machine-stage runner driven by evolving.yml (v2)",
   "license": "MIT",
   "type": "module",
@@ -20,7 +20,7 @@
     "templates"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json && node -e \"require('node:fs').chmodSync('dist/cli.js', 0o755)\"",
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.json && node -e \"require('node:fs').chmodSync('dist/cli.js', 0o755)\"",
     "type-check": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "prepack": "npm run build"
