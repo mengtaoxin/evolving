@@ -1,9 +1,9 @@
-/** Minimal v2 evolving.yml helper for tests. */
-export function minimalV2Yaml(options: {
+/** Minimal evolving.yml helper for tests. */
+export function minimalYaml(options: {
   stagesYaml: string;
 }): string {
   return `
-version: 2
+version: 1
 stages:
 ${options.stagesYaml}
 `;

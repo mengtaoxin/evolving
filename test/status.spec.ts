@@ -6,7 +6,7 @@ import { loadConfig } from "../src/load-config.ts";
 import { runStage } from "../src/run-stage.ts";
 import { buildStatus, printStatus } from "../src/status.ts";
 import type { RunReport } from "../src/types.ts";
-import { agentStageYaml, machineStageYaml, minimalV2Yaml } from "./helpers/v2-yaml.ts";
+import { agentStageYaml, machineStageYaml, minimalYaml } from "./helpers/yaml.ts";
 
 describe("status", () => {
   it("returns state none when no last-run exists", () => {
@@ -25,7 +25,7 @@ describe("status", () => {
     const dir = mkdtempSync(join(tmpdir(), "evolving-status-agent-fail-"));
     writeFileSync(
       join(dir, "evolving.yml"),
-      minimalV2Yaml({
+      minimalYaml({
         stagesYaml: [
           agentStageYaml("edit", { summary: "change code" }),
           machineStageYaml(
@@ -55,7 +55,7 @@ describe("status", () => {
     const dir = mkdtempSync(join(tmpdir(), "evolving-status-full-"));
     writeFileSync(
       join(dir, "evolving.yml"),
-      minimalV2Yaml({
+      minimalYaml({
         stagesYaml: [
           agentStageYaml("edit"),
           machineStageYaml(
@@ -87,7 +87,7 @@ describe("status", () => {
     const dir = mkdtempSync(join(tmpdir(), "evolving-status-synth-"));
     writeFileSync(
       join(dir, "evolving.yml"),
-      minimalV2Yaml({
+      minimalYaml({
         stagesYaml: [
           agentStageYaml("orient"),
           agentStageYaml("edit"),

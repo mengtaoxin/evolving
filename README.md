@@ -2,7 +2,7 @@
 
 Project-agnostic **ordered stages** checklist and machine-stage runner.
 
-Put an `evolving.yml` (`version: 2`) at the repo root. The CLI loads that file and `spawn`s the commands you declare on machine stages. Formatters, linters, and test runners stay in the consumer repo.
+Put an `evolving.yml` (`version: 1`) at the repo root. The CLI loads that file and `spawn`s the commands you declare on machine stages. Formatters, linters, and test runners stay in the consumer repo.
 
 Designed for **agents first**: progressive `explain` is the **sole protocol source** (downstream AGENTS.md should only point at it), quiet JSON stdout by default, a fixed `contract`, `.evolving/last-run.json` for resume, and `.evolving/logs/` for full step output.
 
@@ -32,7 +32,6 @@ Copy [templates/AGENTS.evolving.md](templates/AGENTS.evolving.md) if useful.
 | `evolving run --tags tag1,tag2` | Run machine stages with any listed tag (document order) |
 | `evolving run --ids id1,id2` | Run listed stage ids in order (skips agent stages) |
 | `evolving status` | Read `.evolving/last-run.json` and suggest `next` |
-| `evolving agent-contract` | Alias of `explain contract` |
 
 Flags: `--config <path>`, `status --full` (embed full last-run). stdout is always one JSON object.
 
@@ -66,7 +65,7 @@ Topics: `contract`, `run`, `stages`, `status`, `json`, `agent`.
 ## Config sketch
 
 ```yaml
-version: 2
+version: 1
 
 stages:
   - id: orient

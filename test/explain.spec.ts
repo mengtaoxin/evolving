@@ -143,7 +143,7 @@ describe("explain", () => {
     expect(report.error).toContain("stages");
   });
 
-  it("explain contract matches AGENT_CONTRACT (agent-contract alias target)", () => {
+  it("explain contract matches AGENT_CONTRACT", () => {
     const report = buildExplainTopic("contract", null);
     expect(report.detail).toMatchObject({ contract: AGENT_CONTRACT });
     expect(report.text).toContain("evolving explain");

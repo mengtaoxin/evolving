@@ -18,7 +18,7 @@ const fixturePath = join(fixtureDir, "fixtures/minimal.evolving.yml");
 describe("parseConfig", () => {
   it("loads the abstract fixture", () => {
     const config = parseConfig(parseYaml(readFileSync(fixturePath, "utf8")));
-    expect(config.version).toBe(2);
+    expect(config.version).toBe(1);
     expect(config.stages.map((s) => s.id)).toEqual([
       "orient",
       "edit",
@@ -64,7 +64,7 @@ describe("parseConfig", () => {
 
   it("defaults id to name", () => {
     const config = parseConfig({
-      version: 2,
+      version: 1,
       stages: [
         {
           id: "verify",
@@ -77,50 +77,26 @@ describe("parseConfig", () => {
 
   it("allows agent-only configs with no machine stages", () => {
     const config = parseConfig({
-      version: 2,
+      version: 1,
       stages: [{ id: "orient", summary: "read docs" }],
     });
     expect(config.stages).toHaveLength(1);
     expect(isAgentStage(config.stages[0]!)).toBe(true);
   });
 
-  it("rejects version 1", () => {
-    expect(() =>
-      parseConfig({
-        version: 1,
-        workflow: [],
-        gates: { check: [], verify: { detect: "git", suites: {} } },
-      }),
-    ).toThrow(/version 1 is not supported/);
-  });
-
-  it("rejects removed after_edit and kind", () => {
+  it("rejects non-v1 version", () => {
     expect(() =>
       parseConfig({
         version: 2,
-        after_edit: ["prepare", "verify"],
-        stages: [{ id: "verify", commands: [{ name: "ok", command: ["true"] }] }],
+        stages: [{ id: "orient", summary: "read" }],
       }),
-    ).toThrow(/after_edit was removed/);
-
-    expect(() =>
-      parseConfig({
-        version: 2,
-        stages: [
-          {
-            id: "verify",
-            kind: "verify",
-            commands: [{ name: "ok", command: ["true"] }],
-          },
-        ],
-      }),
-    ).toThrow(/kind was removed/);
+    ).toThrow(/version must be 1/);
   });
 
   it("rejects empty commands array", () => {
     expect(() =>
       parseConfig({
-        version: 2,
+        version: 1,
         stages: [{ id: "x", commands: [] }],
       }),
     ).toThrow(/commands must be non-empty/);
@@ -129,7 +105,7 @@ describe("parseConfig", () => {
   it("rejects mixed argv and command:// refs", () => {
     expect(() =>
       parseConfig({
-        version: 2,
+        version: 1,
         stages: [
           {
             id: "verify",
@@ -148,7 +124,7 @@ describe("parseConfig", () => {
   it("rejects unknown command:// refs", () => {
     expect(() =>
       parseConfig({
-        version: 2,
+        version: 1,
         stages: [
           {
             id: "verify",
@@ -165,18 +141,9 @@ describe("parseConfig", () => {
     ).toThrow(/unknown command:\/\/missing/);
   });
 
-  it("rejects removed command key on agent stages", () => {
-    expect(() =>
-      parseConfig({
-        version: 2,
-        stages: [{ id: "x", command: ["true"] }],
-      }),
-    ).toThrow(/command was removed/);
-  });
-
   it("parses optional tags and rejects empty or duplicate tags", () => {
     const config = parseConfig({
-      version: 2,
+      version: 1,
       stages: [
         { id: "edit", tags: ["needs-agent", "review"] },
         { id: "orient", summary: "read" },
@@ -187,21 +154,21 @@ describe("parseConfig", () => {
 
     expect(() =>
       parseConfig({
-        version: 2,
+        version: 1,
         stages: [{ id: "edit", tags: [] }],
       }),
     ).toThrow(/tags must be non-empty/);
 
     expect(() =>
       parseConfig({
-        version: 2,
+        version: 1,
         stages: [{ id: "edit", tags: ["needs-agent", "needs-agent"] }],
       }),
     ).toThrow(/duplicate tag/);
 
     expect(() =>
       parseConfig({
-        version: 2,
+        version: 1,
         stages: [{ id: "edit", tags: [""] }],
       }),
     ).toThrow(/tags\[0\] must be a non-empty string/);

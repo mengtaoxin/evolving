@@ -11,19 +11,6 @@ import {
 
 const CONFIG_NAME = "evolving.yml";
 
-const REMOVED_ROOT_KEYS = ["after_edit", "workflow"] as const;
-const REMOVED_STAGE_KEYS = [
-  "kind",
-  "command",
-  "check",
-  "detect",
-  "suites",
-  "always",
-  "steps",
-  "fix",
-  "env",
-] as const;
-
 export function configPath(cwd: string, explicit?: string): string {
   if (explicit) return isAbsolute(explicit) ? explicit : join(cwd, explicit);
   return join(cwd, CONFIG_NAME);
@@ -43,18 +30,7 @@ export function loadConfig(cwd: string, explicitPath?: string): EvolvingConfig {
 
 export function parseConfig(raw: unknown, source = "evolving.yml"): EvolvingConfig {
   if (!isRecord(raw)) throw new Error(`${source}: root must be a mapping`);
-  if (raw.version === 1) {
-    throw new Error(`${source}: version 1 is not supported; use version: 2`);
-  }
-  if (raw.version !== 2) throw new Error(`${source}: version must be 2`);
-
-  for (const key of REMOVED_ROOT_KEYS) {
-    if (raw[key] !== undefined) {
-      throw new Error(
-        `${source}: ${key} was removed; stages document order is the protocol axis`,
-      );
-    }
-  }
+  if (raw.version !== 1) throw new Error(`${source}: version must be 1`);
 
   const stagesRaw = requireArray(raw.stages, `${source}: stages`);
   if (stagesRaw.length === 0) throw new Error(`${source}: stages must be non-empty`);
@@ -63,7 +39,7 @@ export function parseConfig(raw: unknown, source = "evolving.yml"): EvolvingConf
   assertUniqueStageIds(stages, source);
   assertCommandGraphs(stages, source);
 
-  return { version: 2, stages };
+  return { version: 1, stages };
 }
 
 function assertUniqueStageIds(stages: readonly Stage[], source: string): void {
@@ -99,14 +75,6 @@ function assertCommandGraphs(stages: readonly Stage[], source: string): void {
 
 function parseStage(raw: unknown, label: string): Stage {
   const obj = requireRecord(raw, label);
-  for (const key of REMOVED_STAGE_KEYS) {
-    if (obj[key] !== undefined) {
-      throw new Error(
-        `${label}: ${key} was removed; use optional commands (machine) or summary/refs (agent)`,
-      );
-    }
-  }
-
   const id = requireString(obj.id, `${label}.id`);
   const stage: Stage = { id };
 
@@ -159,7 +127,6 @@ function parseStage(raw: unknown, label: string): Stage {
 
 function parseStageCommand(raw: unknown, label: string): StageCommand {
   const obj = requireRecord(raw, label);
-  forbidKeys(obj, label, ["fix", "also", "paths", "steps"]);
   const name = requireString(obj.name, `${label}.name`);
   const id = obj.id === undefined ? name : requireString(obj.id, `${label}.id`);
   const command = requireCommand(obj.command, `${label}.command`);
@@ -216,18 +183,6 @@ function assertCommandArgvShape(command: readonly string[], label: string): void
     const refId = commandRefId(token);
     if (refId.length === 0) {
       throw new Error(`${label}.command: ${COMMAND_REF_PREFIX} id must be non-empty`);
-    }
-  }
-}
-
-function forbidKeys(
-  obj: Record<string, unknown>,
-  label: string,
-  keys: readonly string[],
-): void {
-  for (const key of keys) {
-    if (obj[key] !== undefined) {
-      throw new Error(`${label}: must not set ${key}`);
     }
   }
 }

@@ -19,15 +19,11 @@ const USAGE = `Usage:
   evolving run --tags tag1,tag2 [--config path]
   evolving run --ids id1,id2 [--config path]
   evolving status [--full] [--config path]
-  evolving agent-contract   # alias: explain contract
 
 For agents: evolving explain (sole protocol source).
 Stages with commands are runnable; stages without are agent-only.
 stdout is always one JSON object.
 `;
-
-const REMOVED_HINT =
-  "use evolving run <stage-id>, evolving run --tags <tags>, or evolving run --ids <ids>";
 
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
@@ -43,9 +39,9 @@ async function main(): Promise<void> {
   const full = takeFlag(rest, "--full");
   const cwd = process.cwd();
 
-  if (command === "explain" || command === "agent-contract") {
-    const topic = command === "agent-contract" ? "contract" : rest.find((a) => !a.startsWith("--"));
-    if (command === "explain" && topic) {
+  if (command === "explain") {
+    const topic = rest.find((a) => !a.startsWith("--"));
+    if (topic) {
       const index = rest.indexOf(topic);
       if (index !== -1) rest.splice(index, 1);
     }
@@ -58,17 +54,6 @@ async function main(): Promise<void> {
 
   if (command === "status") {
     printStatus(cwd, { full });
-    return;
-  }
-
-  if (command === "prepare" || command === "verify" || command === "check" || command === "finish") {
-    printJson({
-      evolving: 1,
-      ok: false,
-      exit_code: 2,
-      error: `evolving ${command} was removed; ${REMOVED_HINT}`,
-    });
-    process.exitCode = 2;
     return;
   }
 

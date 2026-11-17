@@ -3,14 +3,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadConfig } from "../src/load-config.ts";
 import { runStage } from "../src/run-stage.ts";
-import { agentStageYaml, machineStageYaml, minimalV2Yaml } from "./helpers/v2-yaml.ts";
+import { agentStageYaml, machineStageYaml, minimalYaml } from "./helpers/yaml.ts";
 
 describe("runStage", () => {
   it("runs machine stage commands and returns 0 on success", async () => {
     const dir = mkdtempSync(join(tmpdir(), "evolving-run-"));
     writeFileSync(
       join(dir, "evolving.yml"),
-      minimalV2Yaml({
+      minimalYaml({
         stagesYaml: machineStageYaml(
           "prepare",
           `      - name: touch
@@ -38,7 +38,7 @@ describe("runStage", () => {
     const dir = mkdtempSync(join(tmpdir(), "evolving-run-agent-"));
     writeFileSync(
       join(dir, "evolving.yml"),
-      minimalV2Yaml({
+      minimalYaml({
         stagesYaml: agentStageYaml("edit", { summary: "change code" }),
       }),
     );

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
-import { agentStageYaml, machineStageYaml, minimalV2Yaml } from "./helpers/v2-yaml.ts";
+import { agentStageYaml, machineStageYaml, minimalYaml } from "./helpers/yaml.ts";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const cliPath = join(repoRoot, "dist/cli.js");
@@ -38,7 +38,7 @@ describe("cli json default", () => {
     const dir = mkdtempSync(join(tmpdir(), "evolving-cli-full-"));
     writeFileSync(
       join(dir, "evolving.yml"),
-      minimalV2Yaml({
+      minimalYaml({
         stagesYaml: [
           agentStageYaml("edit", { summary: "change code" }),
           machineStageYaml(
@@ -61,23 +61,11 @@ describe("cli json default", () => {
     expect(parsed.next[0]).toBe("edit");
   });
 
-  it("prepare/verify/check/finish commands are rejected", () => {
-    const dir = mkdtempSync(join(tmpdir(), "evolving-cli-gone-"));
-    for (const cmd of ["prepare", "verify", "check", "finish"]) {
-      const result = runCli([cmd], dir);
-      expect(result.status).toBe(2);
-      const parsed = JSON.parse(result.stdout.trim());
-      expect(parsed.ok).toBe(false);
-      expect(parsed.error).toMatch(/was removed/i);
-      expect(parsed.error).toMatch(/--tags|--ids/);
-    }
-  });
-
   it("run requires a stage id, --tags, or --ids", () => {
     const dir = mkdtempSync(join(tmpdir(), "evolving-cli-run-"));
     writeFileSync(
       join(dir, "evolving.yml"),
-      minimalV2Yaml({
+      minimalYaml({
         stagesYaml: machineStageYaml(
           "verify",
           `      - name: ok
@@ -94,7 +82,7 @@ describe("cli json default", () => {
     const dir = mkdtempSync(join(tmpdir(), "evolving-cli-mutex-"));
     writeFileSync(
       join(dir, "evolving.yml"),
-      minimalV2Yaml({
+      minimalYaml({
         stagesYaml: machineStageYaml(
           "verify",
           `      - name: ok
@@ -116,7 +104,7 @@ describe("cli json default", () => {
     const dir = mkdtempSync(join(tmpdir(), "evolving-cli-tags-"));
     writeFileSync(
       join(dir, "evolving.yml"),
-      minimalV2Yaml({
+      minimalYaml({
         stagesYaml: machineStageYaml(
           "verify",
           `      - name: ok

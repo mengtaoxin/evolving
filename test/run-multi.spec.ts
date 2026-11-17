@@ -10,8 +10,8 @@ import {
 import {
   agentStageYaml,
   machineStageYaml,
-  minimalV2Yaml,
-} from "./helpers/v2-yaml.ts";
+  minimalYaml,
+} from "./helpers/yaml.ts";
 
 async function captureRunStages(
   dir: string,
@@ -31,7 +31,7 @@ describe("runStages / --tags / --ids", () => {
     const dir = mkdtempSync(join(tmpdir(), "evolving-run-tags-"));
     writeFileSync(
       join(dir, "evolving.yml"),
-      minimalV2Yaml({
+      minimalYaml({
         stagesYaml: [
           machineStageYaml(
             "prepare",
@@ -64,7 +64,7 @@ describe("runStages / --tags / --ids", () => {
     const dir = mkdtempSync(join(tmpdir(), "evolving-run-ids-"));
     writeFileSync(
       join(dir, "evolving.yml"),
-      minimalV2Yaml({
+      minimalYaml({
         stagesYaml: [
           agentStageYaml("edit", { summary: "change" }),
           machineStageYaml(
@@ -95,7 +95,7 @@ describe("runStages / --tags / --ids", () => {
     const dir = mkdtempSync(join(tmpdir(), "evolving-run-empty-"));
     writeFileSync(
       join(dir, "evolving.yml"),
-      minimalV2Yaml({
+      minimalYaml({
         stagesYaml: machineStageYaml(
           "local-only",
           `      - name: touch
@@ -115,7 +115,7 @@ describe("runStages / --tags / --ids", () => {
     const dir = mkdtempSync(join(tmpdir(), "evolving-run-unknown-"));
     writeFileSync(
       join(dir, "evolving.yml"),
-      minimalV2Yaml({
+      minimalYaml({
         stagesYaml: machineStageYaml(
           "verify",
           `      - name: ok

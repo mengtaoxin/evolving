@@ -37,7 +37,7 @@ export interface Stage {
 }
 
 export interface EvolvingConfig {
-  version: 2;
+  version: 1;
   stages: readonly Stage[];
 }
 
@@ -91,8 +91,8 @@ export interface RunReport {
   stage_id?: string;
   /** Absolute path to .evolving/last-run.json after persist. */
   last_run_path?: string;
-  step_count?: number;
-  passed_count?: number;
+  step_count: number;
+  passed_count: number;
   selection?: SelectionReportMeta;
   finished_at?: string;
   cwd?: string;

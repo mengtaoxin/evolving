@@ -4,14 +4,14 @@ import { join } from "node:path";
 import { loadConfig, parseConfig } from "../src/load-config.ts";
 import { findStage, stageCommands } from "../src/stages-access.ts";
 import { runStage } from "../src/run-stage.ts";
-import { machineStageYaml, minimalV2Yaml } from "./helpers/v2-yaml.ts";
+import { machineStageYaml, minimalYaml } from "./helpers/yaml.ts";
 
 const MISSING_BIN = "evolving-not-installed-bin-9f3a2c";
 
 function writeVerifyConfig(dir: string, commandsYaml: string): void {
   writeFileSync(
     join(dir, "evolving.yml"),
-    minimalV2Yaml({ stagesYaml: machineStageYaml("verify", commandsYaml) }),
+    minimalYaml({ stagesYaml: machineStageYaml("verify", commandsYaml) }),
   );
 }
 
@@ -28,7 +28,7 @@ async function captureRun(dir: string) {
 describe("onMissing: warn", () => {
   it("parses onMissing warn on a stage command", () => {
     const config = parseConfig({
-      version: 2,
+      version: 1,
       stages: [
         {
           id: "verify",
@@ -44,7 +44,7 @@ describe("onMissing: warn", () => {
   it("rejects unknown onMissing values", () => {
     expect(() =>
       parseConfig({
-        version: 2,
+        version: 1,
         stages: [
           {
             id: "verify",

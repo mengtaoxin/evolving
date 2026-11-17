@@ -6,10 +6,10 @@ import { loadConfig } from "../src/load-config.ts";
 import { MAX_LOG_BYTES, outputPreview, writeStepLog } from "../src/report.ts";
 import { runStage } from "../src/run-stage.ts";
 import { buildStatus } from "../src/status.ts";
-import { agentStageYaml, machineStageYaml, minimalV2Yaml } from "./helpers/v2-yaml.ts";
+import { agentStageYaml, machineStageYaml, minimalYaml } from "./helpers/yaml.ts";
 
 function writeConfig(dir: string, stagesYaml: string): void {
-  writeFileSync(join(dir, "evolving.yml"), minimalV2Yaml({ stagesYaml }));
+  writeFileSync(join(dir, "evolving.yml"), minimalYaml({ stagesYaml }));
 }
 
 describe("json RunReport", () => {

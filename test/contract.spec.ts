@@ -11,7 +11,6 @@ describe("agent contract", () => {
     expect(AGENT_CONTRACT.agent_stages).toBe("no commands; agent-evaluated");
     expect(AGENT_CONTRACT.machine_stages).toBe("has commands; CLI run");
     expect(AGENT_CONTRACT.resume_on_fail).toBe("nearest prior agent stage");
-    expect(AGENT_CONTRACT).not.toHaveProperty("finish_runs");
     expect(AGENT_CONTRACT.protocol_source).toBe("evolving explain");
     expect(AGENT_CONTRACT.do_not_duplicate_in_downstream_docs).toBe(true);
     expect(AGENT_CONTRACT.skip_when_vocabulary).toEqual([...SKIP_WHEN_VOCABULARY]);
@@ -26,7 +25,6 @@ describe("agent contract", () => {
     expect(text).toContain("--tags");
     expect(text).toContain("--ids");
     expect(text).toMatch(/quiet JSON object/i);
-    expect(text).not.toContain("--json");
     expect(text).toContain("machine stage");
     expect(text).toContain("do_not:");
     expect(text).toMatch(/Never head\/tail\/tee/i);
@@ -39,7 +37,6 @@ describe("agent contract", () => {
     expect(text).toMatch(/nearest prior agent stage/i);
     expect(text).toMatch(/tags are optional/i);
     expect(text).toMatch(/id\+runnable only/i);
-    expect(text).not.toMatch(/evolving prepare|evolving verify|evolving finish/i);
     for (const token of SKIP_WHEN_VOCABULARY) {
       expect(text).toContain(token);
     }

@@ -27,7 +27,6 @@ describe("printStages", () => {
     expect(lines).toHaveLength(1);
     const view = JSON.parse(lines[0] as string);
     expect(view.command).toBe("stages");
-    expect(view.after_edit).toBeUndefined();
     expect(view.stages.map((s: { id: string }) => s.id)).toEqual([
       "orient",
       "edit",
@@ -60,7 +59,6 @@ describe("printStages", () => {
     expect(view.progressive).toMatch(/no panorama/i);
     const verify = view.stages.find((s) => s.id === "verify");
     expect(verify).toEqual({ id: "verify", runnable: true });
-    expect(verify).not.toHaveProperty("kind");
     expect(verify).not.toHaveProperty("commands");
     expect(verify).not.toHaveProperty("tags");
     const edit = view.stages.find((s) => s.id === "edit");

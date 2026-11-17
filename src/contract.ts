@@ -54,7 +54,7 @@ point agents at explain — do not duplicate these rules in the consumer repo.
 
 0. Start with: evolving explain (map + next). Work top-down through stages. There is no
    CLI panorama — neither explain nor evolving stages dumps every stage body/commands.
-1. stages document order is the only protocol axis. No kind / after_edit.
+1. stages document order is the only protocol axis.
 2. Stages with commands are machine stages — run via evolving run <stage-id>,
    evolving run --tags <tags>, or evolving run --ids <ids>.
    Stages without commands are agent stages — Read evolving.yml for summary/refs/skip_when/tags.
