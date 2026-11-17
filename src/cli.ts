@@ -1,9 +1,14 @@
 #!/usr/bin/env node
-import { runFinish } from "./finish.ts";
 import { printExplain, resolveExplain } from "./explain.ts";
 import { loadConfig } from "./load-config.ts";
 import { printJson } from "./report.ts";
-import { runStage } from "./run-stage.ts";
+import {
+  parseCsvList,
+  resolveStagesByIds,
+  runStage,
+  runStages,
+  stagesMatchingTags,
+} from "./run-stage.ts";
 import { printStages } from "./stages.ts";
 import { printStatus } from "./status.ts";
 
@@ -11,7 +16,8 @@ const USAGE = `Usage:
   evolving explain [topic] [--config path]
   evolving stages [--config path]
   evolving run <stage-id> [command-id|all...] [--config path]
-  evolving finish [--config path]
+  evolving run --tags tag1,tag2 [--config path]
+  evolving run --ids id1,id2 [--config path]
   evolving status [--full] [--config path]
   evolving agent-contract   # alias: explain contract
 
@@ -19,6 +25,9 @@ For agents: evolving explain (sole protocol source).
 Stages with commands are runnable; stages without are agent-only.
 stdout is always one JSON object.
 `;
+
+const REMOVED_HINT =
+  "use evolving run <stage-id>, evolving run --tags <tags>, or evolving run --ids <ids>";
 
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
@@ -52,12 +61,12 @@ async function main(): Promise<void> {
     return;
   }
 
-  if (command === "prepare" || command === "verify" || command === "check") {
+  if (command === "prepare" || command === "verify" || command === "check" || command === "finish") {
     printJson({
       evolving: 1,
       ok: false,
       exit_code: 2,
-      error: `evolving ${command} was removed; use evolving run <stage-id> (or evolving finish)`,
+      error: `evolving ${command} was removed; ${REMOVED_HINT}`,
     });
     process.exitCode = 2;
     return;
@@ -82,13 +91,65 @@ async function main(): Promise<void> {
       printStages(config);
       return;
     case "run": {
+      const hasTags = rest.includes("--tags");
+      const hasIds = rest.includes("--ids");
+      const tagsRaw = takeFlagValue(rest, "--tags");
+      const idsRaw = takeFlagValue(rest, "--ids");
       const stageId = rest.find((a) => !a.startsWith("--"));
+
+      if (hasTags && hasIds) {
+        printJson({
+          evolving: 1,
+          ok: false,
+          exit_code: 2,
+          error: "evolving run: use only one of --tags or --ids",
+        });
+        process.exitCode = 2;
+        return;
+      }
+
+      if ((hasTags || hasIds) && stageId) {
+        printJson({
+          evolving: 1,
+          ok: false,
+          exit_code: 2,
+          error:
+            "evolving run: --tags/--ids cannot be combined with a stage id. Usage: evolving run <stage-id> | --tags <tags> | --ids <ids>",
+        });
+        process.exitCode = 2;
+        return;
+      }
+
+      if (hasTags) {
+        const tags = parseCsvList(tagsRaw);
+        process.exitCode = (await runStages(cwd, stagesMatchingTags(config, tags))).exit_code;
+        return;
+      }
+
+      if (hasIds) {
+        const ids = parseCsvList(idsRaw);
+        const resolved = resolveStagesByIds(config, ids);
+        if (resolved.error) {
+          printJson({
+            evolving: 1,
+            ok: false,
+            exit_code: 2,
+            error: resolved.error,
+          });
+          process.exitCode = 2;
+          return;
+        }
+        process.exitCode = (await runStages(cwd, resolved.stages)).exit_code;
+        return;
+      }
+
       if (!stageId) {
         printJson({
           evolving: 1,
           ok: false,
           exit_code: 2,
-          error: "evolving run requires a stage id. Usage: evolving run <stage-id> [command-id|all...]",
+          error:
+            "evolving run requires a stage id, --tags, or --ids. Usage: evolving run <stage-id> [command-id|all...] | --tags <tags> | --ids <ids>",
         });
         process.exitCode = 2;
         return;
@@ -98,9 +159,6 @@ async function main(): Promise<void> {
       process.exitCode = (await runStage(cwd, config, stageId, rest)).exit_code;
       return;
     }
-    case "finish":
-      process.exitCode = (await runFinish(cwd, config)).exit_code;
-      return;
     default:
       console.error(`Unknown command: ${command}\n`);
       process.stdout.write(USAGE);

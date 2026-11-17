@@ -33,9 +33,9 @@ describe("parseConfig", () => {
     expect(stagesWithTag(config, "needs-agent").map((s) => s.id)).toEqual(["edit"]);
     expect(findStage(config, "orient")!.tags).toBeUndefined();
     expect(isMachineStage(findStage(config, "prepare")!)).toBe(true);
-    expect(findStage(config, "prepare")!.tags).toEqual(["run-in-finish"]);
-    expect(findStage(config, "verify")!.tags).toEqual(["run-in-finish"]);
-    expect(stagesWithTag(config, "run-in-finish").map((s) => s.id)).toEqual([
+    expect(findStage(config, "prepare")!.tags).toEqual(["gate"]);
+    expect(findStage(config, "verify")!.tags).toEqual(["gate"]);
+    expect(stagesWithTag(config, "gate").map((s) => s.id)).toEqual([
       "prepare",
       "verify",
     ]);

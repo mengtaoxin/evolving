@@ -61,18 +61,19 @@ describe("cli json default", () => {
     expect(parsed.next[0]).toBe("edit");
   });
 
-  it("prepare/verify/check commands are rejected", () => {
+  it("prepare/verify/check/finish commands are rejected", () => {
     const dir = mkdtempSync(join(tmpdir(), "evolving-cli-gone-"));
-    for (const cmd of ["prepare", "verify", "check"]) {
+    for (const cmd of ["prepare", "verify", "check", "finish"]) {
       const result = runCli([cmd], dir);
       expect(result.status).toBe(2);
       const parsed = JSON.parse(result.stdout.trim());
       expect(parsed.ok).toBe(false);
       expect(parsed.error).toMatch(/was removed/i);
+      expect(parsed.error).toMatch(/--tags|--ids/);
     }
   });
 
-  it("run requires a stage id", () => {
+  it("run requires a stage id, --tags, or --ids", () => {
     const dir = mkdtempSync(join(tmpdir(), "evolving-cli-run-"));
     writeFileSync(
       join(dir, "evolving.yml"),
@@ -86,6 +87,50 @@ describe("cli json default", () => {
     );
     const result = runCli(["run"], dir);
     expect(result.status).toBe(2);
-    expect(JSON.parse(result.stdout.trim()).error).toMatch(/requires a stage id/i);
+    expect(JSON.parse(result.stdout.trim()).error).toMatch(/stage id|--tags|--ids/i);
+  });
+
+  it("run --tags and --ids are mutually exclusive with each other and stage id", () => {
+    const dir = mkdtempSync(join(tmpdir(), "evolving-cli-mutex-"));
+    writeFileSync(
+      join(dir, "evolving.yml"),
+      minimalV2Yaml({
+        stagesYaml: machineStageYaml(
+          "verify",
+          `      - name: ok
+        command: ["true"]`,
+          { tags: ["gate"] },
+        ),
+      }),
+    );
+    const both = runCli(["run", "--tags", "gate", "--ids", "verify"], dir);
+    expect(both.status).toBe(2);
+    expect(JSON.parse(both.stdout.trim()).error).toMatch(/only one of --tags or --ids/i);
+
+    const withId = runCli(["run", "verify", "--tags", "gate"], dir);
+    expect(withId.status).toBe(2);
+    expect(JSON.parse(withId.stdout.trim()).error).toMatch(/cannot be combined/i);
+  });
+
+  it("run --tags executes matching machine stages", () => {
+    const dir = mkdtempSync(join(tmpdir(), "evolving-cli-tags-"));
+    writeFileSync(
+      join(dir, "evolving.yml"),
+      minimalV2Yaml({
+        stagesYaml: machineStageYaml(
+          "verify",
+          `      - name: ok
+        command: ["true"]`,
+          { tags: ["gate"] },
+        ),
+      }),
+    );
+    const result = runCli(["run", "--tags", "gate"], dir);
+    expect(result.status).toBe(0);
+    const parsed = JSON.parse(result.stdout.trim());
+    expect(parsed.command).toBe("run");
+    expect(parsed.ok).toBe(true);
+    expect(parsed.step_count).toBe(1);
+    expect(parsed.passed_count).toBe(1);
   });
 });

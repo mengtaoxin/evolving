@@ -29,7 +29,8 @@ Copy [templates/AGENTS.evolving.md](templates/AGENTS.evolving.md) if useful.
 | `evolving explain [topic]` | **Agent entry**: map + next first step, or one machine topic drilled |
 | `evolving stages` | Minimal id+runnable timeline (+ first) — not a full detail dump |
 | `evolving run <stage-id> [command-id\|all...]` | Run one stage’s commands (git path select + `command://`) |
-| `evolving finish` | Run machine stages tagged `run-in-finish` in document order |
+| `evolving run --tags tag1,tag2` | Run machine stages with any listed tag (document order) |
+| `evolving run --ids id1,id2` | Run listed stage ids in order (skips agent stages) |
 | `evolving status` | Read `.evolving/last-run.json` and suggest `next` |
 | `evolving agent-contract` | Alias of `explain contract` |
 
@@ -46,18 +47,21 @@ evolving explain                 # map (stage_ids) + next; topics index
 evolving explain run             # machine topic detail when needed
 evolving run prepare             # then act
 evolving run verify
+# or batch by consumer-chosen tags / ids:
+evolving run --tags gate
+evolving run --ids prepare,verify
 # on failure:
 evolving status
 ```
 
-Topics: `contract`, `run`, `finish`, `stages`, `status`, `json`, `agent`.
+Topics: `contract`, `run`, `stages`, `status`, `json`, `agent`.
 
 - Agent stages (no `commands`) are **agent-evaluated**; the CLI never executes them. Read `evolving.yml` for the **current** agent step only.
 - Place an **edit** agent stage where the agent should change code (e.g. after orient, before gates). Attach TDD docs via `refs`.
 - `evolving stages` / `explain stages` are a minimal `{id,runnable}` map (+ first), not a full timeline dump.
-- `finish` runs machine stages tagged `run-in-finish`. Put extras as stages with `commands` (tag them to include in finish).
+- There is **no** fixed finish/wrap-up command — downstream chooses how to batch gates (`--tags` and/or `--ids`).
 - Recommended `skip_when` tokens: `entry_file_known`, `docs_only`, `no_behavior_change`, `already_verified` (free text still allowed).
-- Optional `tags` on any stage: `needs-agent` is a semantic hint; `run-in-finish` opts a machine stage into `evolving finish`. Progressive maps stay `{id,runnable}`; Read `evolving.yml` for the current step to see tags.
+- Optional `tags` on any stage: `needs-agent` is a semantic hint; other tags are free text for `evolving run --tags`. Progressive maps stay `{id,runnable}`; Read `evolving.yml` for the current step to see tags.
 
 ## Config sketch
 
@@ -73,14 +77,14 @@ stages:
     refs: ["docs/tdd.md"]
     tags: [needs-agent]
   - id: prepare
-    tags: [run-in-finish]
+    tags: [gate]
     commands:
       - name: format
         command: ["npm", "run", "format"]
       - name: lint:fix
         command: ["npm", "run", "lint:fix"]
   - id: verify
-    tags: [run-in-finish]
+    tags: [gate]
     commands:
       - name: format:check
         command: ["npm", "run", "format:check"]
@@ -108,7 +112,7 @@ stages:
 - JSON Schema: [schema/evolving.schema.json](schema/evolving.schema.json).
 
 - `onMissing: warn` — if the executable is not on PATH (`spawn` ENOENT), print a warn and continue; real non-zero exits from an installed tool still fail.
-- `.evolving/last-run.json` — written after run/finish; safe to gitignore in consumer repos.
+- `.evolving/last-run.json` — written after run; safe to gitignore in consumer repos.
 - `.evolving/logs/` — full per-step stdout/stderr; every `step.log` points here.
 
 ## Design notes
@@ -117,6 +121,6 @@ stages:
 - evolving does not enforce write vs read-only — downstream chooses what each command does.
 - CI belongs in each repo’s GitHub Actions (or other) workflow — this package does not define `evolving ci`.
 - `skip_when` on agent stages is documentation for agents; the CLI does not evaluate it.
-- `tags` are optional (recommended: `needs-agent`, `run-in-finish`). `run-in-finish` is enforced by `finish`; other tags are semantic. Tags are not in the stages map.
+- `tags` are optional (recommended: `needs-agent`). Other tags are consumer-defined; use `evolving run --tags` to filter. Tags are not in the stages map.
 - evolving is a deterministic gate runner + progressive checklist, not an agent runtime (no LangGraph).
 - Agent protocol lives only in `evolving explain` / contract + this repo’s `evolving.yml` — not in a second consumer handbook.

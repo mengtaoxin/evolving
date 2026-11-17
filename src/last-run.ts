@@ -15,7 +15,7 @@ export function logsDir(cwd: string): string {
   return join(lastRunDir(cwd), "logs");
 }
 
-/** Persist the latest prepare/check/verify/finish report for agent resume. */
+/** Persist the latest run report for agent resume. */
 export function writeLastRun(cwd: string, report: RunReport): RunReport {
   const path = lastRunPath(cwd);
   const payload: RunReport = {

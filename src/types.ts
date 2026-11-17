@@ -28,9 +28,9 @@ export interface Stage {
   /** Documentation-only skip hint for agents; the CLI never evaluates it. */
   skip_when?: string;
   /**
-   * Optional labels. `run-in-finish` opts a machine stage into `evolving finish`;
-   * other tags (e.g. needs-agent) are semantic only. Recommended tokens live on
-   * AgentContract.tags_vocabulary.
+   * Optional labels. Recommended: needs-agent (semantic). Other tags are
+   * consumer-defined and usable with `evolving run --tags`. Recommended tokens
+   * live on AgentContract.tags_vocabulary.
    */
   tags?: readonly string[];
   commands?: readonly StageCommand[];
@@ -50,7 +50,7 @@ export interface StepResult {
   missingExecutable?: boolean;
 }
 
-export type RunCommandName = "run" | "finish";
+export type RunCommandName = "run";
 
 /** One gate/command step as exposed to agents (JSON stdout / last-run). */
 export interface ReportStep {
@@ -87,7 +87,7 @@ export interface RunReport {
   failed: readonly string[];
   /** Structured failures (name / log / output_preview). Empty on success. */
   failure: readonly FailureSummary[];
-  /** Stage that was run (`run`); omitted for finish aggregate. */
+  /** Stage that was run; omitted on successful multi-stage `--tags`/`--ids` runs. */
   stage_id?: string;
   /** Absolute path to .evolving/last-run.json after persist. */
   last_run_path?: string;
@@ -101,9 +101,8 @@ export interface RunReport {
 export interface AgentContract {
   stages_order: "document";
   agent_stages: "no commands; agent-evaluated";
-  machine_stages: "has commands; CLI run/finish";
+  machine_stages: "has commands; CLI run";
   resume_on_fail: "nearest prior agent stage";
-  finish_runs: "machine stages tagged run-in-finish in order";
   protocol_source: "evolving explain";
   do_not_duplicate_in_downstream_docs: true;
   skip_when_vocabulary: readonly string[];
@@ -152,7 +151,6 @@ export interface StatusReport {
 export type ExplainTopicId =
   | "contract"
   | "run"
-  | "finish"
   | "stages"
   | "status"
   | "json"

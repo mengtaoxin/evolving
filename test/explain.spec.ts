@@ -101,39 +101,35 @@ describe("explain", () => {
       tags_vocabulary: string[];
     };
     expect(detail.agent_stage_ids).toEqual(["orient", "edit", "docs"]);
-    expect(detail.tags_vocabulary).toEqual(["needs-agent", "run-in-finish"]);
+    expect(detail.tags_vocabulary).toEqual(["needs-agent"]);
     const blob = JSON.stringify(report);
     expect(blob).not.toContain("Locate entry files");
     expect(blob).not.toContain("docs/overview.md");
   });
 
-  it("explain finish lists run-in-finish stages as id+runnable only", () => {
-    const report = buildExplainTopic("finish", loadFixture());
-    const detail = report.detail as {
-      finish_stages: Array<{ id: string; runnable: boolean }>;
-      tag: string;
-      agent_skipped: string[];
-    };
-    expect(detail.tag).toBe("run-in-finish");
-    expect(detail.finish_stages).toEqual([
-      { id: "prepare", runnable: true },
-      { id: "verify", runnable: true },
-    ]);
-    expect(detail.agent_skipped).toEqual(["orient", "edit", "docs"]);
-    expect(JSON.stringify(report)).not.toContain("npm run");
-  });
-
-  it("explain run includes machine stage commands", () => {
+  it("explain run includes machine stage commands and multi-run modes", () => {
     const report = buildExplainTopic("run", loadFixture());
     expect(report.topic).toBe("run");
-    expect(report.how_to_run?.[0]).toMatch(/evolving run/);
-    const stages = (
-      report.detail as {
-        stages: Array<{ id: string; commands: Array<{ name?: string; command: string[] }> }>;
-      }
-    ).stages;
-    expect(stages.map((s) => s.id)).toEqual(["prepare", "verify"]);
-    const prepare = stages.find((s) => s.id === "prepare");
+    expect(report.how_to_run).toEqual(
+      expect.arrayContaining([
+        "evolving run <stage-id>",
+        "evolving run --tags <tags>",
+        "evolving run --ids <ids>",
+      ]),
+    );
+    const detail = report.detail as {
+      stages: Array<{
+        id: string;
+        tags?: string[];
+        commands: Array<{ name?: string; command: string[] }>;
+      }>;
+      modes: Record<string, string>;
+    };
+    expect(detail.stages.map((s) => s.id)).toEqual(["prepare", "verify"]);
+    expect(detail.stages[0]?.tags).toEqual(["gate"]);
+    expect(detail.modes.tags).toMatch(/--tags/);
+    expect(detail.modes.ids).toMatch(/--ids/);
+    const prepare = detail.stages.find((s) => s.id === "prepare");
     expect(prepare?.commands.map((s) => s.name)).toEqual(["format", "lint:fix"]);
     expect(prepare?.commands[0]?.command).toEqual(["npm", "run", "format"]);
   });

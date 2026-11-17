@@ -3,7 +3,7 @@ import type { StepResult } from "./types.ts";
 
 export type ChildHandle = ReturnType<typeof spawn>;
 
-/** Minimal spawn request used by prepare/run/finish runners. */
+/** Minimal spawn request used by run runners. */
 export interface SpawnStep {
   command: readonly string[];
   name?: string;

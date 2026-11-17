@@ -7,12 +7,7 @@ import {
   TAGS_VOCABULARY,
 } from "./contract.ts";
 import { printJson } from "./report.ts";
-import {
-  finishStages,
-  isAgentStage,
-  isMachineStage,
-  machineStages,
-} from "./stages-access.ts";
+import { isAgentStage, isMachineStage, machineStages } from "./stages-access.ts";
 import { buildStatus } from "./status.ts";
 import type {
   EvolvingConfig,
@@ -31,9 +26,8 @@ const AGENT_IO_DETAIL = {
 } as const;
 
 export const EXPLAIN_TOPICS: readonly ExplainTopicRef[] = [
-  { id: "contract", summary: "Fixed agent protocol (ordered stages, run, finish, resume)" },
-  { id: "run", summary: "Run one stage by id (commands + git select + command://)" },
-  { id: "finish", summary: "Run machine stages tagged run-in-finish in document order" },
+  { id: "contract", summary: "Fixed agent protocol (ordered stages, run, resume)" },
+  { id: "run", summary: "Run by stage id, --tags, or --ids (commands + git select + command://)" },
   { id: "stages", summary: "Minimal timeline map (id+runnable) — no panorama" },
   { id: "status", summary: "Resume / recover truncated view from .evolving/last-run.json + logs" },
   { id: "json", summary: "Quiet JSON stdout; full step text under .evolving/logs/" },
@@ -79,7 +73,13 @@ export function buildExplainIndex(
     },
     next,
     ...(configError ? { error: configError } : {}),
-    how_to_run: ["evolving stages", "evolving run <stage-id>", "evolving status"],
+    how_to_run: [
+      "evolving stages",
+      "evolving run <stage-id>",
+      "evolving run --tags <tags>",
+      "evolving run --ids <ids>",
+      "evolving status",
+    ],
   };
 }
 
@@ -105,40 +105,32 @@ export function buildExplainTopic(
       const machines = config ? machineStages(config) : [];
       return topicBase(topic, config, {
         summary:
-          "Run one stage: evolving run <stage-id> [command-id|all...]. Machine stages select always-on + git path matches, then expand command://. Agent stages return no commands to run.",
+          "Run machine stages: evolving run <stage-id> [command-id|all...], evolving run --tags <tags>, or evolving run --ids <ids>. Modes are mutually exclusive. --tags selects machine stages with any listed tag (document order); --ids runs the listed ids in order (skips agent stages; unknown id fails). Per stage: always-on + git path select, then command://. Single agent stage id returns ok with no spawn.",
         detail: {
           stages: machines.map((s) => ({
             id: s.id,
             commands: s.commands.map(commandDetail),
+            ...(s.tags ? { tags: s.tags } : {}),
           })),
+          modes: {
+            stage_id: "evolving run <stage-id> [command-id|all...]",
+            tags: "evolving run --tags tag1,tag2 (OR match, machine only)",
+            ids: "evolving run --ids id1,id2 (order given; skip agent; unknown fails)",
+          },
           args: {
-            stage_id: "required",
-            command_ids: "optional subset or all",
+            stage_id: "one of: stage id, --tags, or --ids",
+            command_ids: "optional subset or all (single-stage mode only)",
           },
         },
-        how_to_run: ["evolving run <stage-id>", "evolving run <stage-id> all"],
-        see_also: ["finish", "status", "json"],
+        how_to_run: [
+          "evolving run <stage-id>",
+          "evolving run <stage-id> all",
+          "evolving run --tags <tags>",
+          "evolving run --ids <ids>",
+        ],
+        see_also: ["status", "json", "agent"],
       });
     }
-    case "finish":
-      return topicBase(topic, config, {
-        summary:
-          "Runs machine stages tagged run-in-finish in document order. Skips agent stages and machine stages without that tag.",
-        detail: {
-          finish_stages: config
-            ? finishStages(config).map((s): StageView => ({
-                id: s.id,
-                runnable: true,
-              }))
-            : null,
-          tag: "run-in-finish",
-          agent_skipped: config
-            ? config.stages.filter(isAgentStage).map((s) => s.id)
-            : null,
-        },
-        how_to_run: ["evolving finish"],
-        see_also: ["stages", "run", "agent"],
-      });
     case "stages": {
       const rows = config
         ? config.stages.map(
@@ -156,7 +148,7 @@ export function buildExplainTopic(
           machine_detail: "evolving explain run",
         },
         how_to_run: ["evolving explain stages", "evolving stages"],
-        see_also: ["agent", "finish", "run"],
+        see_also: ["agent", "run"],
       });
     }
     case "status":
@@ -213,13 +205,19 @@ export function buildExplainTopic(
             "next",
           ],
         },
-        how_to_run: ["evolving explain", "evolving run <stage-id>", "evolving status"],
+        how_to_run: [
+          "evolving explain",
+          "evolving run <stage-id>",
+          "evolving run --tags <tags>",
+          "evolving run --ids <ids>",
+          "evolving status",
+        ],
         see_also: ["status", "contract"],
       });
     case "agent":
       return topicBase(topic, config, {
         summary:
-          "Agent stages have no commands. The CLI never executes or evaluates skip_when. This topic lists ids only — read evolving.yml for the current step's summary/refs/skip_when/tags. Place an edit stage where the agent should change code; optional tags like needs-agent clarify intent. Machine stages use run-in-finish to opt into evolving finish.",
+          "Agent stages have no commands. The CLI never executes or evaluates skip_when. This topic lists ids only — read evolving.yml for the current step's summary/refs/skip_when/tags. Place an edit stage where the agent should change code; optional tags like needs-agent clarify intent. Other tags are consumer-defined; filter with evolving run --tags when useful.",
         detail: {
           skip_when_vocabulary: SKIP_WHEN_VOCABULARY,
           tags_vocabulary: TAGS_VOCABULARY,
@@ -230,10 +228,10 @@ export function buildExplainTopic(
           edit_checkpoint:
             "Put a no-commands stage (e.g. id: edit) before machine gates; status resumes there on failure",
           tags:
-            "Optional labels; recommended needs-agent (semantic) and run-in-finish (opts machine stage into finish). Not shown in evolving stages map.",
+            "Optional labels; recommended needs-agent (semantic). Other tags are free text for run --tags. Not shown in evolving stages map.",
         },
         how_to_run: ["evolving explain agent"],
-        see_also: ["stages", "finish", "contract"],
+        see_also: ["stages", "run", "contract"],
       });
   }
 }

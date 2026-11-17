@@ -77,13 +77,9 @@ function suggestNext(last: RunReport, config: EvolvingConfig | null): string[] {
   if (config && stageId) {
     const agent = nearestPriorAgentStage(config, stageId);
     if (agent) {
-      const next = [agent.id];
-      if (last.command === "run") next.push(`run ${stageId}`);
-      else if (last.command === "finish") next.push("finish");
-      return next;
+      return [agent.id, `run ${stageId}`];
     }
   }
-  if (last.command === "run" && stageId) return [`run ${stageId}`];
-  if (last.command === "finish") return ["finish"];
-  return [last.command];
+  if (stageId) return [`run ${stageId}`];
+  return ["explain"];
 }

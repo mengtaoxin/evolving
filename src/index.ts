@@ -43,19 +43,23 @@ export {
   alwaysOnIds,
 } from "./detect.ts";
 export {
-  RUN_IN_FINISH_TAG,
   isAgentStage,
   isMachineStage,
   machineStages,
-  finishStages,
   findStage,
   nearestPriorAgentStage,
   stageCommands,
   stageHasTag,
   stagesWithTag,
 } from "./stages-access.ts";
-export { runStage, runMachineStage } from "./run-stage.ts";
-export { runFinish } from "./finish.ts";
+export {
+  parseCsvList,
+  resolveStagesByIds,
+  runMachineStage,
+  runStage,
+  runStages,
+  stagesMatchingTags,
+} from "./run-stage.ts";
 export { buildStagesView, printStages } from "./stages.ts";
 export { buildStatus, printStatus } from "./status.ts";
 export { lastRunDir, lastRunPath, logsDir, readLastRun, writeLastRun } from "./last-run.ts";
