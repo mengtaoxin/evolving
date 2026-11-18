@@ -279,7 +279,7 @@ describe("explain", () => {
     );
     expect(detail.output_preview).toMatch(/Evolving-chosen window/i);
     expect(detail.output_preview).not.toMatch(/\btail\b/i);
-    expect(detail.step_log).toMatch(/\.evolving\/logs\//);
+    expect(detail.step_log).toMatch(/OS tmp\/evolving\//);
     expect(report.how_to_run?.join(" ")).not.toMatch(/\|/);
     expect(report.how_to_run?.join(" ")).not.toContain("--json");
     expect(report.summary).toMatch(/quiet JSON object/i);
@@ -292,7 +292,7 @@ describe("explain", () => {
       on_truncated_view: string;
       resume_on_fail: string;
     };
-    expect(detail.logs_dir).toBe(".evolving/logs/");
+    expect(detail.logs_dir).toMatch(/OS tmp/i);
     expect(detail.on_truncated_view).toMatch(/status --full/i);
     expect(detail.on_truncated_view).toMatch(/never/i);
     expect(detail.resume_on_fail).toMatch(/nearest prior agent/i);

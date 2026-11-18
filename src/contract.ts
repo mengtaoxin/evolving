@@ -16,15 +16,17 @@ export const AGENT_IO_DO_NOT = [
   "Never pipe evolving through head / tail / less / jq to skim results",
   "Never truncate evolving stdout with shell pipes for reading",
   "Never tee evolving output just to capture the result JSON",
-  "Never re-run a long gate only because the agent view truncated stdout — recover via status + step.log",
+  "Never re-run a long gate only because the agent view truncated stdout — recover via status + step.log when the log still exists",
+  "Never Read a step.log path that status omitted or marked logs_missing — re-run instead",
   "Evolving already compresses success and previews failures — you must not second-truncate",
   "Do not restate this protocol in downstream AGENTS.md / rules — evolving explain is the only source",
 ] as const;
 
 export const AGENT_IO_DO = [
   "Read the full stdout JSON object from evolving (no pipes)",
-  "On failure, use failure[] / output_preview to locate the error; Read step.log for the full text",
-  "If the agent view truncated stdout: evolving status (or status --full), then Read step.log — do not re-run to re-read",
+  "On failure, use failure[] / output_preview to locate the error; Read step.log for the full text when present",
+  "If the agent view truncated stdout: evolving status (or status --full), then Read step.log when present — do not re-run only to re-read",
+  "If status reports logs_missing (OS tmp cleaned): re-run the failed stage — do not Read a missing path",
   "Start with evolving explain (map + next action); work top-down through stages — no CLI dumps full stages detail",
   "next is an executable action, never a bare stage id. Agent step: Read evolving.yml for the current step. evolving explain <stage-id> returns that step's summary, refs, and skip_when only",
   "Machine detail: evolving explain run, only before evolving run. Agent body: Read evolving.yml for the current step only",
@@ -67,8 +69,10 @@ point agents at explain — do not duplicate these rules in the consumer repo.
 5. Tags are free text. Downstream chooses which tags mean what; evolving does not define a
    finish/wrap-up command. Filter with evolving run --tags when useful.
 6. On failure, evolving status suggests the nearest prior agent stage (Read evolving.yml for that step), then evolving run the failed stage.
-7. Full step output lives under .evolving/logs/ (path on each step.log). If your view
-   truncated the JSON, run evolving status --full and Read the log — do not re-run to re-read.
+7. Full step output is written under OS tmp (path on each step.log); .evolving/last-run.json
+   stays in the project. If your view truncated the JSON, run evolving status --full and
+   Read the log when present — do not re-run only to re-read. If status reports logs_missing
+   (tmp cleaned), re-run the failed stage — do not Read a missing path.
 8. skip_when is agent-evaluated. Recommended tokens: ${SKIP_WHEN_VOCABULARY.join(", ")}.
 9. tags are optional labels on any stage. Recommended: ${TAGS_VOCABULARY.join(", ")}
    (semantic). Other tags are consumer-defined and usable with run --tags.

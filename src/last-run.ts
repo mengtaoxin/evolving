@@ -1,4 +1,5 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { RunReport } from "./types.ts";
 
@@ -10,9 +11,12 @@ export function lastRunPath(cwd: string): string {
   return join(lastRunDir(cwd), "last-run.json");
 }
 
-/** Directory for full per-step stdout/stderr logs (survive beyond /tmp). */
-export function logsDir(cwd: string): string {
-  return join(lastRunDir(cwd), "logs");
+/**
+ * OS tmp directory for full per-step stdout/stderr logs (session scratch;
+ * OS may clean later). `cwd` kept for API compatibility; unused.
+ */
+export function logsDir(_cwd?: string): string {
+  return join(tmpdir(), "evolving");
 }
 
 /** Persist the latest run report for agent resume. */

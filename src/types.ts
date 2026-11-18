@@ -143,6 +143,13 @@ export interface StatusReport {
   failed?: readonly string[];
   failure?: readonly FailureSummary[];
   last_run_path?: string;
+  /**
+   * True when last-run references step.log paths that no longer exist
+   * (OS tmp cleaned). Agents must re-run — do not Read dead paths.
+   */
+  logs_missing?: boolean;
+  /** Present when logs_missing; tells agents to re-run. */
+  logs_note?: string;
   /** Present when status --full, or omitted on slim default. */
   last_run?: RunReport;
   next: readonly string[];

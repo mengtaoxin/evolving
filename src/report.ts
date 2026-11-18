@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { logsDir } from "./last-run.ts";
@@ -11,9 +12,11 @@ import type {
 } from "./types.ts";
 
 const MAX_PRINTED_LINES = 40;
-/** Cap on-disk step logs so a runaway suite cannot fill the repo. */
+/** Cap on-disk step logs so a runaway suite cannot fill the temp volume. */
 export const MAX_LOG_BYTES = 2 * 1024 * 1024;
 const ERROR_LINE_RE = /Error|FAIL|error:|✘/i;
+const LOG_UNIQUE_BYTES = 6;
+const LOG_PATH_ATTEMPTS = 8;
 
 export function timestamp(date: Date): string {
   const pad = (value: number) => String(value).padStart(2, "0");
@@ -51,20 +54,29 @@ export function sanitizeLogName(name: string): string {
   return name.replace(/[^\w-]+/g, "-");
 }
 
-export function stepLogPath(cwd: string, name: string, stamp: string): string {
-  return join(logsDir(cwd), `${stamp}-${sanitizeLogName(name)}.log`);
+/** Candidate path under OS tmp; includes a random suffix to avoid collisions. */
+export function stepLogPath(cwd: string, name: string, stamp: string, unique?: string): string {
+  const token = unique ?? randomBytes(LOG_UNIQUE_BYTES).toString("hex");
+  return join(logsDir(cwd), `evolving-${stamp}-${sanitizeLogName(name)}-${token}.log`);
 }
 
-/** Write step output under .evolving/logs/; truncate with a marker when over cap. */
+/** Write step output under OS tmp; truncate with a marker when over cap. */
 export function writeStepLog(cwd: string, name: string, stamp: string, output: string): string {
   const dir = logsDir(cwd);
   mkdirSync(dir, { recursive: true });
-  const path = stepLogPath(cwd, name, stamp);
   const body = output.length > MAX_LOG_BYTES
     ? `${output.slice(0, MAX_LOG_BYTES)}\n\n[evolving] log truncated at ${MAX_LOG_BYTES} bytes; original length ${output.length}\n`
     : `${output}\n`;
-  writeFileSync(path, body);
-  return path;
+  for (let attempt = 0; attempt < LOG_PATH_ATTEMPTS; attempt++) {
+    const path = stepLogPath(cwd, name, stamp);
+    try {
+      writeFileSync(path, body, { flag: "wx" });
+      return path;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+    }
+  }
+  throw new Error(`could not allocate a unique step log under ${dir}`);
 }
 
 export function createReporter(

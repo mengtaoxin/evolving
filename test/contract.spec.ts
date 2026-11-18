@@ -28,8 +28,10 @@ describe("agent contract", () => {
     expect(text).toContain("machine stage");
     expect(text).toContain("do_not:");
     expect(text).toMatch(/Never head\/tail\/tee/i);
-    expect(text).toContain(".evolving/logs/");
-    expect(text).toMatch(/do not re-run to re-read/i);
+    expect(text).toMatch(/OS tmp/i);
+    expect(text).toContain(".evolving/last-run.json");
+    expect(text).toMatch(/logs_missing/i);
+    expect(text).toMatch(/do not re-run only to re-read/i);
     expect(text).toMatch(/do not duplicate/i);
     expect(text).toMatch(/run_in_file_change|command:\/\//i);
     expect(text).toMatch(/CLI panorama/i);

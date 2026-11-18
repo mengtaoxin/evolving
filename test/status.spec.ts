@@ -1,8 +1,9 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { lastRunPath, writeLastRun } from "../src/last-run.ts";
 import { loadConfig } from "../src/load-config.ts";
+import { writeStepLog } from "../src/report.ts";
 import { runStage } from "../src/run-stage.ts";
 import { buildStatus, printStatus } from "../src/status.ts";
 import type { RunReport } from "../src/types.ts";
@@ -135,5 +136,51 @@ describe("status", () => {
     }
     expect(lines).toHaveLength(1);
     expect(JSON.parse(lines[0] as string).state).toBe("none");
+  });
+
+  it("omits missing step.log paths and sets logs_missing", () => {
+    const dir = mkdtempSync(join(tmpdir(), "evolving-status-logs-missing-"));
+    writeFileSync(
+      join(dir, "evolving.yml"),
+      minimalYaml({
+        stagesYaml: [
+          agentStageYaml("edit"),
+          machineStageYaml(
+            "verify",
+            `      - name: ok
+        command: ["true"]`,
+          ),
+        ].join("\n"),
+      }),
+    );
+    const logPath = writeStepLog(dir, "lint", "20260101-000000", "Error: boom\n");
+    const report: RunReport = {
+      evolving: 1,
+      command: "run",
+      ok: false,
+      exit_code: 1,
+      seconds: 1,
+      stage_id: "verify",
+      steps: [{ name: "lint", ok: false, code: 1, seconds: 0.2, log: logPath }],
+      failed: ["lint"],
+      failure: [{ name: "lint", log: logPath, output_preview: "Error: boom" }],
+      step_count: 1,
+      passed_count: 0,
+    };
+    writeLastRun(dir, report);
+    unlinkSync(logPath);
+
+    const status = buildStatus(dir, { full: true });
+    expect(status.state).toBe("failed");
+    expect(status.logs_missing).toBe(true);
+    expect(status.logs_note).toMatch(/re-run/i);
+    expect(status.failure?.[0]?.name).toBe("lint");
+    expect(status.failure?.[0]?.log).toBeUndefined();
+    expect(status.failure?.[0]?.output_preview).toBe("Error: boom");
+    expect(status.last_run?.steps[0]?.log).toBeUndefined();
+    expect(status.next).toEqual([
+      "Read evolving.yml for the current step (edit)",
+      "evolving run verify",
+    ]);
   });
 });

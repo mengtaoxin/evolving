@@ -4,7 +4,7 @@ Project-agnostic **ordered stages** checklist and machine-stage runner.
 
 Put an `evolving.yml` (`version: 1`) at the repo root. The CLI loads that file and `spawn`s the commands you declare on machine stages. Formatters, linters, and test runners stay in the consumer repo.
 
-Designed for **agents first**: progressive `explain` is the **sole protocol source** (downstream AGENTS.md should only point at it), quiet JSON stdout by default, a fixed `contract`, `.evolving/last-run.json` for resume, and `.evolving/logs/` for full step output.
+Designed for **agents first**: progressive `explain` is the **sole protocol source** (downstream AGENTS.md should only point at it), quiet JSON stdout by default, a fixed `contract`, `.evolving/last-run.json` for resume, and OS-tmp step logs for full output.
 
 ## Install
 
@@ -112,7 +112,7 @@ stages:
 
 - `onMissing: warn` — if the executable is not on PATH (`spawn` ENOENT), print a warn and continue; real non-zero exits from an installed tool still fail.
 - `.evolving/last-run.json` — written after run; safe to gitignore in consumer repos.
-- `.evolving/logs/` — full per-step stdout/stderr; every `step.log` points here.
+- OS tmp (`…/evolving/evolving-<stamp>-<name>-<random>.log`) — full per-step stdout/stderr; every `step.log` points here while the file exists. If OS cleaned it, `evolving status` sets `logs_missing` and agents should re-run.
 
 ## Design notes
 

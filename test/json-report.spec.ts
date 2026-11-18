@@ -42,7 +42,7 @@ describe("json RunReport", () => {
     expect(report.exit_code).toBe(0);
     expect(report.steps[0]?.name).toBe("touch");
     expect(report.steps[0]?.log?.startsWith(logsDir(dir) + "/")).toBe(true);
-    expect(report.steps[0]?.log?.endsWith("-touch.log")).toBe(true);
+    expect(report.steps[0]?.log).toMatch(/\/evolving-\d{8}-\d{6}-touch-[0-9a-f]+\.log$/);
     expect(existsSync(report.steps[0]!.log!)).toBe(true);
     expect(report.last_run_path).toBe(lastRunPath(dir));
     expect(report.failure).toEqual([]);
@@ -62,7 +62,7 @@ describe("json RunReport", () => {
     expect(saved.last_run_path).toBe(lastRunPath(dir));
   });
 
-  it("includes .evolving/logs path on failed steps and resumes to edit", async () => {
+  it("includes OS tmp log path on failed steps and resumes to edit", async () => {
     const dir = mkdtempSync(join(tmpdir(), "evolving-json-fail-"));
     writeConfig(
       dir,
@@ -91,7 +91,9 @@ describe("json RunReport", () => {
     expect(report.failed).toContain("format:check");
     expect(report.failure[0]?.name).toBe("format:check");
     expect(report.failure[0]?.log?.startsWith(logsDir(dir) + "/")).toBe(true);
-    expect(report.failure[0]?.log?.endsWith("-format-check.log")).toBe(true);
+    expect(report.failure[0]?.log).toMatch(
+      /\/evolving-\d{8}-\d{6}-format-check-[0-9a-f]+\.log$/,
+    );
     expect(existsSync(report.failure[0]!.log!)).toBe(true);
     expect(readFileSync(report.failure[0]!.log!, "utf8")).toContain("Error: boom");
     expect(report.last_run_path).toBe(lastRunPath(dir));

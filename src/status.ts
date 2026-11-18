@@ -1,8 +1,18 @@
+import { existsSync } from "node:fs";
 import { loadConfig } from "./load-config.ts";
 import { lastRunPath, readLastRun } from "./last-run.ts";
 import { buildFailureSummaries, printJson } from "./report.ts";
 import { nearestPriorAgentStage, readCurrentStepAction } from "./stages-access.ts";
-import type { EvolvingConfig, FailureSummary, RunReport, StatusReport } from "./types.ts";
+import type {
+  EvolvingConfig,
+  FailureSummary,
+  ReportStep,
+  RunReport,
+  StatusReport,
+} from "./types.ts";
+
+const LOGS_MISSING_NOTE =
+  "step.log under OS tmp is gone; re-run the failed stage to regenerate — do not Read a missing path";
 
 export function buildStatus(
   cwd: string,
@@ -21,7 +31,7 @@ export function buildStatus(
   }
 
   const path = last.last_run_path ?? lastRunPath(cwd);
-  const failure = failuresFrom(last);
+  const { failure, logs_missing, last_run } = withLogAvailability(last);
 
   if (last.ok) {
     return {
@@ -30,7 +40,8 @@ export function buildStatus(
       state: "ok",
       ok: true,
       last_run_path: path,
-      ...(full ? { last_run: last } : {}),
+      ...(logs_missing ? { logs_missing: true, logs_note: LOGS_MISSING_NOTE } : {}),
+      ...(full ? { last_run } : {}),
       next: [],
     };
   }
@@ -45,7 +56,8 @@ export function buildStatus(
     failed: [...last.failed],
     failure,
     last_run_path: path,
-    ...(full ? { last_run: last } : {}),
+    ...(logs_missing ? { logs_missing: true, logs_note: LOGS_MISSING_NOTE } : {}),
+    ...(full ? { last_run } : {}),
     next: suggestNext(last, config),
   };
 }
@@ -70,6 +82,46 @@ function failuresFrom(last: RunReport): FailureSummary[] {
   }
   if (last.failed.length === 0) return [];
   return buildFailureSummaries(last.failed, last.steps);
+}
+
+/** Drop dead step.log paths so agents are not told to Read missing files. */
+function withLogAvailability(last: RunReport): {
+  failure: FailureSummary[];
+  logs_missing: boolean;
+  last_run: RunReport;
+} {
+  const logs_missing = referencedLogsMissing(last);
+  const failure = failuresFrom(last).map(scrubFailureLog);
+  const steps = last.steps.map(scrubStepLog);
+  return {
+    failure,
+    logs_missing,
+    last_run: { ...last, steps, failure },
+  };
+}
+
+function referencedLogsMissing(last: RunReport): boolean {
+  for (const step of last.steps) {
+    if (step.log && !existsSync(step.log)) return true;
+  }
+  for (const item of last.failure ?? []) {
+    if (item.log && !existsSync(item.log)) return true;
+  }
+  return false;
+}
+
+function scrubFailureLog(item: FailureSummary): FailureSummary {
+  if (!item.log) return { ...item };
+  if (existsSync(item.log)) return { ...item };
+  const { log: _gone, ...rest } = item;
+  return rest;
+}
+
+function scrubStepLog(step: ReportStep): ReportStep {
+  if (!step.log) return { ...step };
+  if (existsSync(step.log)) return { ...step };
+  const { log: _gone, ...rest } = step;
+  return rest;
 }
 
 function suggestNext(last: RunReport, config: EvolvingConfig | null): string[] {

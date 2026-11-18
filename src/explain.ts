@@ -36,8 +36,8 @@ export const EXPLAIN_TOPICS: readonly ExplainTopicRef[] = [
   { id: "contract", summary: "Fixed agent protocol (ordered stages, run, resume)" },
   { id: "run", summary: "Run by stage id, --tags, or --ids (commands + git select + command://)" },
   { id: "stages", summary: "Minimal timeline map (id+runnable) — no panorama" },
-  { id: "status", summary: "Resume / recover truncated view from .evolving/last-run.json + logs" },
-  { id: "json", summary: "Quiet JSON stdout; full step text under .evolving/logs/" },
+  { id: "status", summary: "Resume / recover truncated view from .evolving/last-run.json + OS tmp logs" },
+  { id: "json", summary: "Quiet JSON stdout; full step text under OS tmp (step.log)" },
   { id: "agent", summary: "Agent stage ids — body via Read evolving.yml top-down" },
 ];
 
@@ -60,7 +60,7 @@ export function buildExplainIndex(
     command: "explain",
     topic: "index",
     summary:
-      "evolving is the sole agent protocol for this repo (not an agent runtime). Downstream docs should only point here — do not duplicate rules in AGENTS.md. Quiet JSON stdout: never pipe/head/tail/tee/less/jq — read the full object. Success is slim; failures include output_preview; full step text is on step.log under .evolving/logs/. If your view truncated output, evolving status --full then Read the log — do not re-run to re-read. Walk stages top-down. next is an executable action, never a bare stage id: an agent step says Read evolving.yml for the current step. evolving explain <stage-id> returns that step's summary, refs, and skip_when only. Machine detail is evolving explain run, only before evolving run. Index is a map (stage_ids) + that next action — never a full stages detail dump (no CLI panorama).",
+      "evolving is the sole agent protocol for this repo (not an agent runtime). Downstream docs should only point here — do not duplicate rules in AGENTS.md. Quiet JSON stdout: never pipe/head/tail/tee/less/jq — read the full object. Success is slim; failures include output_preview; full step text is on step.log under OS tmp. If your view truncated output, evolving status --full then Read the log when present — do not re-run only to re-read. If status reports logs_missing, re-run. Walk stages top-down. next is an executable action, never a bare stage id: an agent step says Read evolving.yml for the current step. evolving explain <stage-id> returns that step's summary, refs, and skip_when only. Machine detail is evolving explain run, only before evolving run. Index is a map (stage_ids) + that next action — never a full stages detail dump (no CLI panorama).",
     ok: true,
     exit_code: 0,
     contract,
@@ -71,7 +71,8 @@ export function buildExplainIndex(
       do_not_duplicate_in_downstream_docs: true,
       stages_order: "document",
       on_failure: "evolving status",
-      on_truncated_view: "evolving status --full, then Read step.log — never re-run only to re-read",
+      on_truncated_view:
+        "evolving status --full, then Read step.log when present — never re-run only to re-read; if logs_missing, re-run",
       never_pipe: true,
       progressive:
         "index = map (stage_ids) + next action → act top-down. Machine detail only via evolving explain run, and only before evolving run. Agent body: Read evolving.yml for the current step only. No CLI dumps the full timeline detail (not explain, not evolving stages).",
@@ -162,12 +163,14 @@ export function buildExplainTopic(
           "Reads .evolving/last-run.json and suggests next. On failure, next is the nearest prior agent stage (typically edit), then re-run. Also the recovery path when the agent view truncated a long run.",
         detail: {
           path: ".evolving/last-run.json",
-          logs_dir: ".evolving/logs/",
+          logs_dir: "OS tmp/evolving/ (session scratch; may be cleaned)",
           states: ["none", "ok", "failed"],
-          default_json: "slim: state, failed, failure, last_run_path, next (no embedded last_run)",
-          full: "status --full embeds last_run (each step.log points at .evolving/logs/)",
+          default_json:
+            "slim: state, failed, failure, last_run_path, next (no embedded last_run); logs_missing + logs_note when step.log is gone",
+          full: "status --full embeds last_run (each step.log points at OS tmp when still present)",
           on_truncated_view:
-            "evolving status --full, then Read step.log — never head/tail evolving or re-run to re-read",
+            "evolving status --full, then Read step.log when present — never head/tail evolving or re-run only to re-read",
+          on_logs_missing: "re-run the failed stage — do not Read a missing step.log path",
           resume_on_fail: "nearest prior agent stage (no commands)",
         },
         how_to_run: ["evolving status", "evolving status --full"],
@@ -176,7 +179,7 @@ export function buildExplainTopic(
     case "json":
       return topicBase(topic, config, {
         summary:
-          "stdout is always one quiet JSON object. Never pipe or second-truncate it. Full step text is under .evolving/logs/ (step.log on every step).",
+          "stdout is always one quiet JSON object. Never pipe or second-truncate it. Full step text is under OS tmp (step.log on every step).",
         detail: {
           ...AGENT_IO_DETAIL,
           run_report_fields: [
@@ -195,11 +198,11 @@ export function buildExplainTopic(
             "output_preview",
           ],
           output_preview:
-            "Evolving-chosen window (Error/FAIL neighborhood, else last N lines) so you can locate the failure. Read step.log for the full text — do not shell-truncate.",
+            "Evolving-chosen window (Error/FAIL neighborhood, else last N lines) so you can locate the failure. Read step.log for the full text when present — do not shell-truncate.",
           step_log:
-            "Every step writes .evolving/logs/<stamp>-<name>.log; path is always on step.log (success and failure).",
+            "Every step writes OS tmp/evolving/evolving-<stamp>-<name>-<random>.log; path is always on step.log (success and failure) while the file exists.",
           success_json:
-            "Compressed: ok, seconds, counts, last_run_path; failure[] empty. Disk keeps full last-run + logs.",
+            "Compressed: ok, seconds, counts, last_run_path; failure[] empty. Disk keeps full last-run; step logs live under OS tmp.",
           explain_fields: [
             "topic",
             "summary",
