@@ -17,7 +17,7 @@ npm install -D @mengtaoxin/evolving
 In the consumer repo’s `AGENTS.md` (or Cursor rules), only point at explain — do **not** restate stage/run/IO rules:
 
 ```markdown
-Update this project by following `evolving explain` (do not add a pipe; `npx evolving explain`).
+Update this project by following `npx evolving explain` (do not add a pipe).
 ```
 
 Copy [templates/AGENTS.evolving.md](templates/AGENTS.evolving.md) if useful.
