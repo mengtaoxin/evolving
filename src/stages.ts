@@ -12,7 +12,7 @@ export function buildStagesView(config: EvolvingConfig): StagesView {
     stages,
     first: stages[0] ?? null,
     progressive:
-      "Minimal id+runnable map + first only — no panorama. Follow top-down; machine detail via explain run; agent body via Read evolving.yml for the current step.",
+      "Minimal id+runnable map + first only — no panorama. Follow top-down; machine detail via evolving explain run only before evolving run; agent body via Read evolving.yml for the current step.",
   };
 }
 

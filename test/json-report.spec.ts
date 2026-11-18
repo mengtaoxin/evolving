@@ -103,7 +103,10 @@ describe("json RunReport", () => {
 
     const status = buildStatus(dir);
     expect(status.state).toBe("failed");
-    expect(status.next).toEqual(["edit", "run verify"]);
+    expect(status.next).toEqual([
+      "Read evolving.yml for the current step (edit)",
+      "evolving run verify",
+    ]);
     expect(status.last_run).toBeUndefined();
     expect(status.failure?.[0]?.name).toBe("format:check");
     expect(status.failure?.[0]?.log).toBe(report.failure[0]?.log);

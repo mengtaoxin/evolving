@@ -5,6 +5,11 @@ export function isAgentStage(stage: Stage): boolean {
   return stage.commands === undefined;
 }
 
+/** Executable next action for an agent stage — never a bare stage id. */
+export function readCurrentStepAction(stageId: string): string {
+  return `Read evolving.yml for the current step (${stageId})`;
+}
+
 /** True when the stage has commands (CLI-runnable). */
 export function isMachineStage(stage: Stage): stage is Stage & {
   commands: readonly StageCommand[];

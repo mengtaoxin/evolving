@@ -7,7 +7,13 @@ import {
   TAGS_VOCABULARY,
 } from "./contract.ts";
 import { printJson } from "./report.ts";
-import { isAgentStage, isMachineStage, machineStages } from "./stages-access.ts";
+import {
+  findStage,
+  isAgentStage,
+  isMachineStage,
+  machineStages,
+  readCurrentStepAction,
+} from "./stages-access.ts";
 import { buildStatus } from "./status.ts";
 import type {
   EvolvingConfig,
@@ -15,6 +21,7 @@ import type {
   ExplainReport,
   ExplainTopicId,
   ExplainTopicRef,
+  Stage,
   StageCommand,
   StageView,
 } from "./types.ts";
@@ -53,7 +60,7 @@ export function buildExplainIndex(
     command: "explain",
     topic: "index",
     summary:
-      "evolving is the sole agent protocol for this repo (not an agent runtime). Downstream docs should only point here — do not duplicate rules in AGENTS.md. Quiet JSON stdout: never pipe/head/tail/tee/less/jq — read the full object. Success is slim; failures include output_preview; full step text is on step.log under .evolving/logs/. If your view truncated output, evolving status --full then Read the log — do not re-run to re-read. Walk stages top-down; on failure status jumps to the nearest prior agent stage (typically edit). Index is a map + next first step — never a full stages detail dump (no CLI panorama).",
+      "evolving is the sole agent protocol for this repo (not an agent runtime). Downstream docs should only point here — do not duplicate rules in AGENTS.md. Quiet JSON stdout: never pipe/head/tail/tee/less/jq — read the full object. Success is slim; failures include output_preview; full step text is on step.log under .evolving/logs/. If your view truncated output, evolving status --full then Read the log — do not re-run to re-read. Walk stages top-down. next is an executable action, never a bare stage id: an agent step says Read evolving.yml for the current step. evolving explain <stage-id> returns that step's summary, refs, and skip_when only. Machine detail is evolving explain run, only before evolving run. Index is a map (stage_ids) + that next action — never a full stages detail dump (no CLI panorama).",
     ok: true,
     exit_code: 0,
     contract,
@@ -66,15 +73,13 @@ export function buildExplainIndex(
       on_failure: "evolving status",
       on_truncated_view: "evolving status --full, then Read step.log — never re-run only to re-read",
       never_pipe: true,
-      drill_when: "first time using evolving, or when a specific machine topic is unclear",
       progressive:
-        "index = map (stage_ids) + next first step → act top-down. Drill explain run for machine detail. Agent body: Read evolving.yml for the current step only. No CLI dumps the full timeline detail (not explain, not evolving stages).",
+        "index = map (stage_ids) + next action → act top-down. Machine detail only via evolving explain run, and only before evolving run. Agent body: Read evolving.yml for the current step only. No CLI dumps the full timeline detail (not explain, not evolving stages).",
       no_panorama: true,
     },
     next,
     ...(configError ? { error: configError } : {}),
     how_to_run: [
-      "evolving stages",
       "evolving run <stage-id>",
       "evolving run --tags <tags>",
       "evolving run --ids <ids>",
@@ -139,7 +144,7 @@ export function buildExplainTopic(
         : null;
       return topicBase(topic, config, {
         summary:
-          "Minimal progressive map (id+runnable + first). Not a detail dump — no summary/skip_when/refs/tags/commands here. Work top-down; machine detail via explain run; agent body via Read evolving.yml for the current step.",
+          "Minimal progressive map (id+runnable + first). Not a detail dump — no summary/skip_when/refs/tags/commands here. Work top-down; machine detail via evolving explain run only before evolving run; agent body via Read evolving.yml for the current step.",
         detail: {
           stages: rows,
           first: rows?.[0] ?? null,
@@ -243,24 +248,57 @@ export function resolveExplain(
   configError?: string,
 ): ExplainReport {
   if (!topic) return buildExplainIndex(config, cwd, configError);
-  if (!isExplainTopic(topic)) {
-    return {
-      evolving: 1,
-      command: "explain",
-      topic: "index",
-      summary: `Unknown topic: ${topic}`,
-      ok: false,
-      exit_code: 2,
-      contract: agentContractFor(config),
-      topics: EXPLAIN_TOPICS,
-      project: config ? summarizeProject(config) : null,
-      error: `Unknown topic: ${topic}. Expected: ${EXPLAIN_TOPICS.map((t) => t.id).join(", ")}`,
-      next: ["explain"],
-    };
+  if (isExplainTopic(topic)) {
+    const report = buildExplainTopic(topic, config);
+    if (configError) return { ...report, error: configError };
+    return report;
   }
-  const report = buildExplainTopic(topic, config);
-  if (configError) return { ...report, error: configError };
-  return report;
+  if (config) {
+    const stage = findStage(config, topic);
+    if (stage) {
+      const report = buildExplainStage(stage, config);
+      if (configError) return { ...report, error: configError };
+      return report;
+    }
+  }
+  return {
+    evolving: 1,
+    command: "explain",
+    topic: "index",
+    summary: `Unknown topic: ${topic}`,
+    ok: false,
+    exit_code: 2,
+    contract: agentContractFor(config),
+    topics: EXPLAIN_TOPICS,
+    project: config ? summarizeProject(config) : null,
+    error: `Unknown topic: ${topic}. Expected: ${EXPLAIN_TOPICS.map((t) => t.id).join(", ")}`,
+    next: ["explain"],
+  };
+}
+
+function buildExplainStage(stage: Stage, config: EvolvingConfig): ExplainReport {
+  const agent = isAgentStage(stage);
+  const step = stage.summary ?? stage.id;
+  return {
+    evolving: 1,
+    command: "explain",
+    topic: "stage",
+    summary: agent
+      ? `${step} — this step only (summary, refs, skip_when). Read evolving.yml for the current step.`
+      : `${step} — this step only (summary, refs, skip_when). Machine commands are on evolving explain run, only before evolving run.`,
+    ok: true,
+    exit_code: 0,
+    contract: agentContractFor(config),
+    detail: {
+      id: stage.id,
+      summary: stage.summary ?? null,
+      refs: stage.refs ? [...stage.refs] : null,
+      skip_when: stage.skip_when ?? null,
+    },
+    next: agent
+      ? [readCurrentStepAction(stage.id)]
+      : ["evolving explain run", `evolving run ${stage.id}`],
+  };
 }
 
 export function printExplain(report: ExplainReport): void {
@@ -323,10 +361,12 @@ function suggestIndexNext(
   if (cwd) {
     const status = buildStatus(cwd);
     if (status.state === "failed" && status.next.length > 0) {
-      return ["status", ...status.next];
+      return ["evolving status", ...status.next];
     }
   }
-  if (!project) return ["explain contract"];
-  if (project.first_stage_id) return [project.first_stage_id];
-  return ["stages"];
+  if (!project) return ["evolving explain contract"];
+  const first = project.first_stage_id;
+  if (!first) return ["Read evolving.yml"];
+  if (project.agent_stage_ids.includes(first)) return [readCurrentStepAction(first)];
+  return ["evolving explain run", `evolving run ${first}`];
 }

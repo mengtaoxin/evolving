@@ -45,7 +45,10 @@ describe("status", () => {
     }
     const status = buildStatus(dir);
     expect(status.state).toBe("failed");
-    expect(status.next).toEqual(["edit", "run verify"]);
+    expect(status.next).toEqual([
+      "Read evolving.yml for the current step (edit)",
+      "evolving run verify",
+    ]);
     expect(status.last_run).toBeUndefined();
     expect(status.failure?.[0]?.name).toBe("lint");
     expect(status.last_run_path).toBe(lastRunPath(dir));
@@ -112,7 +115,10 @@ describe("status", () => {
     };
     writeLastRun(dir, report);
     const status = buildStatus(dir);
-    expect(status.next).toEqual(["edit", "run verify"]);
+    expect(status.next).toEqual([
+      "Read evolving.yml for the current step (edit)",
+      "evolving run verify",
+    ]);
   });
 
   it("printStatus emits one JSON object", () => {

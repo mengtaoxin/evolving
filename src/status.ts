@@ -1,7 +1,7 @@
 import { loadConfig } from "./load-config.ts";
 import { lastRunPath, readLastRun } from "./last-run.ts";
 import { buildFailureSummaries, printJson } from "./report.ts";
-import { nearestPriorAgentStage } from "./stages-access.ts";
+import { nearestPriorAgentStage, readCurrentStepAction } from "./stages-access.ts";
 import type { EvolvingConfig, FailureSummary, RunReport, StatusReport } from "./types.ts";
 
 export function buildStatus(
@@ -77,9 +77,9 @@ function suggestNext(last: RunReport, config: EvolvingConfig | null): string[] {
   if (config && stageId) {
     const agent = nearestPriorAgentStage(config, stageId);
     if (agent) {
-      return [agent.id, `run ${stageId}`];
+      return [readCurrentStepAction(agent.id), `evolving run ${stageId}`];
     }
   }
-  if (stageId) return [`run ${stageId}`];
+  if (stageId) return [`evolving run ${stageId}`];
   return ["explain"];
 }

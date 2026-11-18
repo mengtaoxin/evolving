@@ -37,6 +37,10 @@ describe("agent contract", () => {
     expect(text).toMatch(/nearest prior agent stage/i);
     expect(text).toMatch(/tags are optional/i);
     expect(text).toMatch(/id\+runnable only/i);
+    expect(text).toMatch(/never a bare stage id/i);
+    expect(text).toMatch(/summary, refs, and skip_when only/i);
+    expect(text).toMatch(/only immediately before evolving run/i);
+    expect(text).not.toMatch(/first time/i);
     for (const token of SKIP_WHEN_VOCABULARY) {
       expect(text).toContain(token);
     }

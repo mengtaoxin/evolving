@@ -173,7 +173,8 @@ export interface ExplainProjectSummary {
 export interface ExplainReport {
   evolving: 1;
   command: "explain";
-  topic: ExplainTopicId | "index";
+  /** `stage` is one step from `explain <stage-id>` (summary, refs, skip_when only). */
+  topic: ExplainTopicId | "index" | "stage";
   summary: string;
   ok: boolean;
   exit_code: number;

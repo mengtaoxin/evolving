@@ -1,4 +1,5 @@
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
@@ -9,7 +10,10 @@ import {
   EXPLAIN_TOPICS,
   resolveExplain,
 } from "../src/explain.ts";
+import { writeLastRun } from "../src/last-run.ts";
 import { parseConfig } from "../src/load-config.ts";
+import type { RunReport } from "../src/types.ts";
+import { agentStageYaml, machineStageYaml, minimalYaml } from "./helpers/yaml.ts";
 
 const fixturePath = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -29,7 +33,7 @@ describe("explain", () => {
     expect(report.error).toMatch(/Missing/);
     expect(report.topics?.map((t) => t.id)).toEqual(EXPLAIN_TOPICS.map((t) => t.id));
     expect(JSON.stringify(report)).not.toContain("npm run format");
-    expect(report.next).toEqual(["explain contract"]);
+    expect(report.next).toEqual(["evolving explain contract"]);
     expect(report.summary).toMatch(/quiet JSON/i);
     expect(report.summary).toMatch(/Never pipe/i);
     expect(report.summary).toMatch(/sole agent protocol/i);
@@ -40,9 +44,13 @@ describe("explain", () => {
       on_failure: "evolving status",
       never_pipe: true,
     });
+    expect(report.detail).not.toHaveProperty("drill_when");
+    expect(JSON.stringify(report.detail)).not.toMatch(/first time/i);
     expect(String((report.detail as { on_truncated_view?: string }).on_truncated_view)).toMatch(
       /status --full/i,
     );
+    expect(report.how_to_run?.[0]).not.toBe("evolving stages");
+    expect(report.how_to_run).not.toContain("evolving stages");
     expect(report.how_to_run?.join(" ")).not.toMatch(/\|/);
     expect(report.how_to_run?.join(" ")).not.toContain("--json");
   });
@@ -61,15 +69,74 @@ describe("explain", () => {
     expect(report.project?.machine_stage_ids).toEqual(["prepare", "verify"]);
     expect(report.project?.first_stage_id).toBe("orient");
     expect(report.project?.first_machine_stage_id).toBe("prepare");
-    expect(report.next).toEqual(["orient"]);
+    expect(report.next).toEqual(["Read evolving.yml for the current step (orient)"]);
+    expect(report.next?.some((item) => item === "orient")).toBe(false);
     expect(report.detail).toMatchObject({ no_panorama: true });
     expect(String((report.detail as { progressive?: string }).progressive)).toMatch(
       /no CLI dumps/i,
+    );
+    expect(String((report.detail as { progressive?: string }).progressive)).toMatch(
+      /only before evolving run/i,
     );
     const blob = JSON.stringify(report);
     expect(blob).not.toContain("npm run format");
     expect(blob).not.toContain("Locate entry files");
     expect(blob).not.toContain("docs/overview.md");
+  });
+
+  it("index next for a machine first stage is explain run, then evolving run", () => {
+    const config = parseConfig(
+      parseYaml(
+        minimalYaml({
+          stagesYaml: machineStageYaml(
+            "prepare",
+            `      - name: format
+        command: ["npm", "run", "format"]`,
+          ),
+        }),
+      ),
+    );
+    const report = buildExplainIndex(config);
+    expect(report.next).toEqual(["evolving explain run", "evolving run prepare"]);
+    expect(report.how_to_run?.[0]).not.toBe("evolving stages");
+  });
+
+  it("index next after a failed run is actions, not a bare stage id", () => {
+    const dir = mkdtempSync(join(tmpdir(), "evolving-explain-next-"));
+    writeFileSync(
+      join(dir, "evolving.yml"),
+      minimalYaml({
+        stagesYaml: [
+          agentStageYaml("edit", { summary: "change code" }),
+          machineStageYaml(
+            "verify",
+            `      - name: lint
+        command: ["node", "-e", "process.exit(1)"]`,
+          ),
+        ].join("\n"),
+      }),
+    );
+    const failed: RunReport = {
+      evolving: 1,
+      command: "run",
+      ok: false,
+      exit_code: 1,
+      seconds: 1,
+      stage_id: "verify",
+      steps: [],
+      failed: ["lint"],
+      failure: [],
+      step_count: 1,
+      passed_count: 0,
+    };
+    writeLastRun(dir, failed);
+    const config = parseConfig(parseYaml(readFileSync(join(dir, "evolving.yml"), "utf8")));
+    const report = buildExplainIndex(config, dir);
+    expect(report.next).toEqual([
+      "evolving status",
+      "Read evolving.yml for the current step (edit)",
+      "evolving run verify",
+    ]);
   });
 
   it("explain stages is a minimal id+runnable map without panorama", () => {
@@ -134,6 +201,45 @@ describe("explain", () => {
     expect(prepare?.commands[0]?.command).toEqual(["npm", "run", "format"]);
   });
 
+  it("explain <stage id> returns that step's summary, refs, and skip_when only", () => {
+    const report = resolveExplain("orient", loadFixture());
+    expect(report.ok).toBe(true);
+    expect(report.exit_code).toBe(0);
+    expect(report.topic).toBe("stage");
+    expect(report.error).toBeUndefined();
+    expect(report.detail).toEqual({
+      id: "orient",
+      summary: "Locate entry files for this repo",
+      refs: ["docs/overview.md"],
+      skip_when: "entry_file_known",
+    });
+    expect(report.next).toEqual(["Read evolving.yml for the current step (orient)"]);
+    expect(report.next).not.toEqual(["explain"]);
+    const blob = JSON.stringify(report);
+    expect(blob).not.toContain("Change code following TDD");
+    expect(blob).not.toContain("Update owning docs");
+    expect(blob).not.toContain("npm run format");
+    expect(blob).not.toContain("stage_ids");
+  });
+
+  it("explain <machine stage id> does not dump commands or the timeline", () => {
+    const report = resolveExplain("prepare", loadFixture());
+    expect(report.ok).toBe(true);
+    expect(report.exit_code).toBe(0);
+    expect(report.topic).toBe("stage");
+    expect(report.detail).toEqual({
+      id: "prepare",
+      summary: null,
+      refs: null,
+      skip_when: null,
+    });
+    expect(report.next).toEqual(["evolving explain run", "evolving run prepare"]);
+    const blob = JSON.stringify(report);
+    expect(blob).not.toContain("npm run format");
+    expect(blob).not.toContain("Locate entry files");
+    expect(blob).not.toContain("Change code following TDD");
+  });
+
   it("unknown topic fails with exit_code 2 and lists topics", () => {
     const report = resolveExplain("nope", loadFixture());
     expect(report.ok).toBe(false);
@@ -154,6 +260,8 @@ describe("explain", () => {
     expect(detail.do_not.some((line) => /second-truncate/i.test(line))).toBe(true);
     expect(detail.do_not.some((line) => /downstream/i.test(line))).toBe(true);
     expect(detail.do.some((line) => /status --full/i.test(line))).toBe(true);
+    expect(detail.do.some((line) => /never a bare stage id/i.test(line))).toBe(true);
+    expect(detail.do.some((line) => /only before evolving run/i.test(line))).toBe(true);
   });
 
   it("explain json documents anti-patterns and failure fields", () => {

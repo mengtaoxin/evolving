@@ -17,7 +17,7 @@ npm install -D @mengtaoxin/evolving
 In the consumer repo’s `AGENTS.md` (or Cursor rules), only point at explain — do **not** restate stage/run/IO rules:
 
 ```markdown
-Update this project by following `evolving explain` (start with `npx evolving explain`).
+Update this project by following `evolving explain` (do not add a pipe; `npx evolving explain`).
 ```
 
 Copy [templates/AGENTS.evolving.md](templates/AGENTS.evolving.md) if useful.
@@ -26,7 +26,7 @@ Copy [templates/AGENTS.evolving.md](templates/AGENTS.evolving.md) if useful.
 
 | Command | Behavior |
 | --- | --- |
-| `evolving explain [topic]` | **Agent entry**: map + next first step, or one machine topic drilled |
+| `evolving explain [topic]` | **Agent entry**: map + next action. A stage id returns that step's summary, refs, and skip_when only |
 | `evolving stages` | Minimal id+runnable timeline (+ first) — not a full detail dump |
 | `evolving run <stage-id> [command-id\|all...]` | Run one stage’s commands (git path select + `command://`) |
 | `evolving run --tags tag1,tag2` | Run machine stages with any listed tag (document order) |
@@ -39,11 +39,11 @@ Flags: `--config <path>`, `status --full` (embed full last-run). stdout is alway
 
 ## Agent usage
 
-Progressive discovery — map + first step only; **no CLI panorama**:
+Progressive discovery — map + next action; **no CLI panorama**:
 
 ```bash
-evolving explain                 # map (stage_ids) + next; topics index
-evolving explain run             # machine topic detail when needed
+evolving explain                 # map (stage_ids) + next action
+evolving explain run             # machine commands, only before evolving run
 evolving run prepare             # then act
 evolving run verify
 # or batch by consumer-chosen tags / ids:
@@ -53,7 +53,7 @@ evolving run --ids prepare,verify
 evolving status
 ```
 
-Topics: `contract`, `run`, `stages`, `status`, `json`, `agent`.
+Topics: `contract`, `run`, `stages`, `status`, `json`, `agent`. `evolving explain <stage-id>` returns that step's summary, refs, and skip_when only.
 
 - Agent stages (no `commands`) are **agent-evaluated**; the CLI never executes them. Read `evolving.yml` for the **current** agent step only.
 - Place an **edit** agent stage where the agent should change code (e.g. after orient, before gates). Attach TDD docs via `refs`.
