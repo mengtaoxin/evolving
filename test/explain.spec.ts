@@ -76,7 +76,7 @@ describe("explain", () => {
       /no CLI dumps/i,
     );
     expect(String((report.detail as { progressive?: string }).progressive)).toMatch(
-      /only before evolving run/i,
+      /explain run if unknown/i,
     );
     const blob = JSON.stringify(report);
     expect(blob).not.toContain("npm run format");
@@ -84,7 +84,7 @@ describe("explain", () => {
     expect(blob).not.toContain("docs/overview.md");
   });
 
-  it("index next for a machine first stage is explain run, then evolving run", () => {
+  it("index next for a machine first stage is explain run if unknown, then evolving run", () => {
     const config = parseConfig(
       parseYaml(
         minimalYaml({
@@ -97,7 +97,10 @@ describe("explain", () => {
       ),
     );
     const report = buildExplainIndex(config);
-    expect(report.next).toEqual(["evolving explain run", "evolving run prepare"]);
+    expect(report.next).toEqual([
+      "evolving explain run if unknown",
+      "evolving run prepare",
+    ]);
     expect(report.how_to_run?.[0]).not.toBe("evolving stages");
   });
 
@@ -233,7 +236,10 @@ describe("explain", () => {
       refs: null,
       skip_when: null,
     });
-    expect(report.next).toEqual(["evolving explain run", "evolving run prepare"]);
+    expect(report.next).toEqual([
+      "evolving explain run if unknown",
+      "evolving run prepare",
+    ]);
     const blob = JSON.stringify(report);
     expect(blob).not.toContain("npm run format");
     expect(blob).not.toContain("Locate entry files");
@@ -261,7 +267,7 @@ describe("explain", () => {
     expect(detail.do_not.some((line) => /downstream/i.test(line))).toBe(true);
     expect(detail.do.some((line) => /status --full/i.test(line))).toBe(true);
     expect(detail.do.some((line) => /never a bare stage id/i.test(line))).toBe(true);
-    expect(detail.do.some((line) => /only before evolving run/i.test(line))).toBe(true);
+    expect(detail.do.some((line) => /explain run if unknown/i.test(line))).toBe(true);
   });
 
   it("explain json documents anti-patterns and failure fields", () => {

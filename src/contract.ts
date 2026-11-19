@@ -29,7 +29,7 @@ export const AGENT_IO_DO = [
   "If status reports logs_missing (OS tmp cleaned): re-run the failed stage — do not Read a missing path",
   "Start with evolving explain (map + next action); work top-down through stages — no CLI dumps full stages detail",
   "next is an executable action, never a bare stage id. Agent step: Read evolving.yml for the current step. evolving explain <stage-id> returns that step's summary, refs, and skip_when only",
-  "Machine detail: evolving explain run, only before evolving run. Agent body: Read evolving.yml for the current step only",
+  "Machine detail: evolving explain run if unknown; if already known, evolving run directly. Agent body: Read evolving.yml for the current step only",
 ] as const;
 
 export const AGENT_CONTRACT: AgentContract = {
@@ -80,8 +80,8 @@ point agents at explain — do not duplicate these rules in the consumer repo.
    maps stay id+runnable only (no tags in the map).
 10. Machine stage commands: omit run_in_file_change to always run; otherwise select via git paths.
    Composition: command://id refs within the same stage.
-11. Machine detail only immediately before evolving run: evolving explain run.
-    evolving stages is a minimal id+runnable map.
+11. Machine detail: evolving explain run if unknown; if already known, evolving
+    run directly. evolving stages is a minimal id+runnable map.
 
 do:
 ${AGENT_IO_DO.map((line) => `- ${line}`).join("\n")}

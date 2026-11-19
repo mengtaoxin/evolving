@@ -43,8 +43,8 @@ Progressive discovery — map + next action; **no CLI panorama**:
 
 ```bash
 evolving explain                 # map (stage_ids) + next action
-evolving explain run             # machine commands, only before evolving run
-evolving run prepare             # then act
+evolving explain run             # machine commands if unknown; skip if already known
+evolving run prepare             # act (explain first only when plan unknown)
 evolving run verify
 # or batch by consumer-chosen tags / ids:
 evolving run --tags gate
