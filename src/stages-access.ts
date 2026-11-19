@@ -6,8 +6,8 @@ export function isAgentStage(stage: Stage): boolean {
 }
 
 /** Executable next action for an agent stage — never a bare stage id. */
-export function readCurrentStepAction(stageId: string): string {
-  return `Read evolving.yml for the current step (${stageId})`;
+export function agentStepAction(stageId: string): string {
+  return `evolving explain ${stageId}`;
 }
 
 /** True when the stage has commands (CLI-runnable). */

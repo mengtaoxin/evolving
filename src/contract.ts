@@ -28,8 +28,8 @@ export const AGENT_IO_DO = [
   "If the agent view truncated stdout: evolving status (or status --full), then Read step.log when present — do not re-run only to re-read",
   "If status reports logs_missing (OS tmp cleaned): re-run the failed stage — do not Read a missing path",
   "Start with evolving explain (map + next action); work top-down through stages — no CLI dumps full stages detail",
-  "next is an executable action, never a bare stage id. Agent step: Read evolving.yml for the current step. evolving explain <stage-id> returns that step's summary, refs, and skip_when only",
-  "Machine detail: evolving explain run if unknown; if already known, evolving run directly. Agent body: Read evolving.yml for the current step only",
+  "next is an executable action, never a bare stage id. Agent step: evolving explain <stage-id> returns that step's summary, refs, skip_when and tags only",
+  "Machine detail: evolving explain run if unknown; if already known, evolving run directly. Agent body: evolving explain <stage-id> for the current step only",
 ] as const;
 
 export const AGENT_CONTRACT: AgentContract = {
@@ -56,19 +56,19 @@ Protocol source: evolving explain (and this contract). Downstream AGENTS.md must
 point agents at explain — do not duplicate these rules in the consumer repo.
 
 0. Start with: evolving explain (map + next action). Work top-down through stages. next is
-   an executable action — an agent step says Read evolving.yml for the current step, never a
+   an executable action — an agent step says evolving explain <stage-id>, never a
    bare stage id. There is no CLI panorama — neither explain nor evolving stages dumps every
    stage body/commands.
 1. stages document order is the only protocol axis.
 2. Stages with commands are machine stages — run via evolving run <stage-id>,
    evolving run --tags <tags>, or evolving run --ids <ids>.
-   Stages without commands are agent stages — Read evolving.yml for summary/refs/skip_when/tags.
-   evolving explain <stage-id> returns that step's summary, refs, and skip_when only.
+   Stages without commands are agent stages — evolving explain <stage-id> for summary/refs/skip_when/tags.
+   evolving explain <stage-id> returns that step's summary, refs, skip_when and tags only.
 3. Put an agent "edit" stage where the agent should change code (e.g. after orient, before gates).
 4. stdout is always one quiet JSON object. Never head/tail/tee/less/jq-pipe it.
 5. Tags are free text. Downstream chooses which tags mean what; evolving does not define a
    finish/wrap-up command. Filter with evolving run --tags when useful.
-6. On failure, evolving status suggests the nearest prior agent stage (Read evolving.yml for that step), then evolving run the failed stage.
+6. On failure, evolving status suggests the nearest prior agent stage (evolving explain that step), then evolving run the failed stage.
 7. Full step output is written under OS tmp (path on each step.log); .evolving/last-run.json
    stays in the project. If your view truncated the JSON, run evolving status --full and
    Read the log when present — do not re-run only to re-read. If status reports logs_missing
@@ -76,8 +76,8 @@ point agents at explain — do not duplicate these rules in the consumer repo.
 8. skip_when is agent-evaluated. Recommended tokens: ${SKIP_WHEN_VOCABULARY.join(", ")}.
 9. tags are optional labels on any stage. Recommended: ${TAGS_VOCABULARY.join(", ")}
    (semantic). Other tags are consumer-defined and usable with run --tags.
-   Read evolving.yml for the current step to see tags — evolving stages / explain stages
-   maps stay id+runnable only (no tags in the map).
+   Run evolving explain <stage-id> to see tags for the current step — evolving stages / explain
+   stages maps stay id+runnable only (no tags in the map).
 10. Machine stage commands: omit run_in_file_change to always run; otherwise select via git paths.
    Composition: command://id refs within the same stage.
 11. Machine detail: evolving explain run if unknown; if already known, evolving

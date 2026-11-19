@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { loadConfig } from "./load-config.ts";
 import { lastRunPath, readLastRun } from "./last-run.ts";
 import { buildFailureSummaries, printJson } from "./report.ts";
-import { nearestPriorAgentStage, readCurrentStepAction } from "./stages-access.ts";
+import { agentStepAction, nearestPriorAgentStage } from "./stages-access.ts";
 import type {
   EvolvingConfig,
   FailureSummary,
@@ -129,7 +129,7 @@ function suggestNext(last: RunReport, config: EvolvingConfig | null): string[] {
   if (config && stageId) {
     const agent = nearestPriorAgentStage(config, stageId);
     if (agent) {
-      return [readCurrentStepAction(agent.id), `evolving run ${stageId}`];
+      return [agentStepAction(agent.id), `evolving run ${stageId}`];
     }
   }
   if (stageId) return [`evolving run ${stageId}`];

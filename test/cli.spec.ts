@@ -58,7 +58,7 @@ describe("cli json default", () => {
     expect(parsed.last_run?.command).toBe("run");
     expect(parsed.last_run?.stage_id).toBe("verify");
     expect(parsed.failed).toContain("lint");
-    expect(parsed.next[0]).toBe("Read evolving.yml for the current step (edit)");
+    expect(parsed.next[0]).toBe("evolving explain edit");
   });
 
   it("run requires a stage id, --tags, or --ids", () => {

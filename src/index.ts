@@ -48,7 +48,7 @@ export {
   machineStages,
   findStage,
   nearestPriorAgentStage,
-  readCurrentStepAction,
+  agentStepAction,
   stageCommands,
   stageHasTag,
   stagesWithTag,

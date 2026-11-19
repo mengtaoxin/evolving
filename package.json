@@ -1,7 +1,7 @@
 {
   "name": "@mengtaoxin/evolving",
-  "version": "0.14.0",
-  "description": "Declarative ordered stages checklist and machine-stage runner driven by evolving.yml",
+  "version": "0.15.0",
+  "description": "CLI-guided ordered stages checklist and machine-stage runner for a project's development flow",
   "license": "MIT",
   "type": "module",
   "bin": {

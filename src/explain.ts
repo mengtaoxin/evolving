@@ -8,11 +8,11 @@ import {
 } from "./contract.ts";
 import { printJson } from "./report.ts";
 import {
+  agentStepAction,
   findStage,
   isAgentStage,
   isMachineStage,
   machineStages,
-  readCurrentStepAction,
 } from "./stages-access.ts";
 import { buildStatus } from "./status.ts";
 import type {
@@ -38,7 +38,7 @@ export const EXPLAIN_TOPICS: readonly ExplainTopicRef[] = [
   { id: "stages", summary: "Minimal timeline map (id+runnable) — no panorama" },
   { id: "status", summary: "Resume / recover truncated view from .evolving/last-run.json + OS tmp logs" },
   { id: "json", summary: "Quiet JSON stdout; full step text under OS tmp (step.log)" },
-  { id: "agent", summary: "Agent stage ids — body via Read evolving.yml top-down" },
+  { id: "agent", summary: "Agent stage ids — body via evolving explain <stage-id> top-down" },
 ];
 
 const TOPIC_IDS = new Set(EXPLAIN_TOPICS.map((t) => t.id));
@@ -60,7 +60,7 @@ export function buildExplainIndex(
     command: "explain",
     topic: "index",
     summary:
-      "evolving is the sole agent protocol for this repo (not an agent runtime). Downstream docs should only point here — do not duplicate rules in AGENTS.md. Quiet JSON stdout: never pipe/head/tail/tee/less/jq — read the full object. Success is slim; failures include output_preview; full step text is on step.log under OS tmp. If your view truncated output, evolving status --full then Read the log when present — do not re-run only to re-read. If status reports logs_missing, re-run. Walk stages top-down. next is an executable action, never a bare stage id: an agent step says Read evolving.yml for the current step. evolving explain <stage-id> returns that step's summary, refs, and skip_when only. Machine detail is evolving explain run if unknown; if already known, evolving run directly. Index is a map (stage_ids) + that next action — never a full stages detail dump (no CLI panorama).",
+      "evolving is the sole agent protocol for this repo (not an agent runtime). Downstream docs should only point here — do not duplicate rules in AGENTS.md. Quiet JSON stdout: never pipe/head/tail/tee/less/jq — read the full object. Success is slim; failures include output_preview; full step text is on step.log under OS tmp. If your view truncated output, evolving status --full then Read the log when present — do not re-run only to re-read. If status reports logs_missing, re-run. Walk stages top-down. next is an executable action, never a bare stage id: an agent step says evolving explain <stage-id>. evolving explain <stage-id> returns that step's summary, refs, skip_when and tags only. Machine detail is evolving explain run if unknown; if already known, evolving run directly. Index is a map (stage_ids) + that next action — never a full stages detail dump (no CLI panorama).",
     ok: true,
     exit_code: 0,
     contract,
@@ -75,7 +75,7 @@ export function buildExplainIndex(
         "evolving status --full, then Read step.log when present — never re-run only to re-read; if logs_missing, re-run",
       never_pipe: true,
       progressive:
-        "index = map (stage_ids) + next action → act top-down. Machine detail via evolving explain run if unknown; if already known, evolving run directly. Agent body: Read evolving.yml for the current step only. No CLI dumps the full timeline detail (not explain, not evolving stages).",
+        "index = map (stage_ids) + next action → act top-down. Machine detail via evolving explain run if unknown; if already known, evolving run directly. Agent body: evolving explain <stage-id> for the current step only. No CLI dumps the full timeline detail (not explain, not evolving stages).",
       no_panorama: true,
     },
     next,
@@ -145,12 +145,12 @@ export function buildExplainTopic(
         : null;
       return topicBase(topic, config, {
         summary:
-          "Minimal progressive map (id+runnable + first). Not a detail dump — no summary/skip_when/refs/tags/commands here. Work top-down; machine detail via evolving explain run if unknown; else evolving run directly; agent body via Read evolving.yml for the current step.",
+          "Minimal progressive map (id+runnable + first). Not a detail dump — no summary/skip_when/refs/tags/commands here. Work top-down; machine detail via evolving explain run if unknown; else evolving run directly; agent body via evolving explain <stage-id>.",
         detail: {
           stages: rows,
           first: rows?.[0] ?? null,
           no_panorama: true,
-          agent_body: "Read evolving.yml for the current agent step only",
+          agent_body: "evolving explain <stage-id> for the current agent step only",
           machine_detail: "evolving explain run if unknown; else evolving run",
         },
         how_to_run: ["evolving explain stages", "evolving stages"],
@@ -225,14 +225,14 @@ export function buildExplainTopic(
     case "agent":
       return topicBase(topic, config, {
         summary:
-          "Agent stages have no commands. The CLI never executes or evaluates skip_when. This topic lists ids only — read evolving.yml for the current step's summary/refs/skip_when/tags. Place an edit stage where the agent should change code; optional tags like needs-agent clarify intent. Other tags are consumer-defined; filter with evolving run --tags when useful.",
+          "Agent stages have no commands. The CLI never executes or evaluates skip_when. This topic lists ids only — use evolving explain <stage-id> for the current step's summary/refs/skip_when/tags. Place an edit stage where the agent should change code; optional tags like needs-agent clarify intent. Other tags are consumer-defined; filter with evolving run --tags when useful.",
         detail: {
           skip_when_vocabulary: SKIP_WHEN_VOCABULARY,
           tags_vocabulary: TAGS_VOCABULARY,
           agent_stage_ids: config
             ? config.stages.filter(isAgentStage).map((s) => s.id)
             : null,
-          body: "Read evolving.yml for the current agent step only (summary/refs/skip_when/tags) — no CLI panorama; stages map stays id+runnable",
+          body: "evolving explain <stage-id> for the current agent step only (summary/refs/skip_when/tags) — no CLI panorama; stages map stays id+runnable",
           edit_checkpoint:
             "Put a no-commands stage (e.g. id: edit) before machine gates; status resumes there on failure",
           tags:
@@ -287,7 +287,7 @@ function buildExplainStage(stage: Stage, config: EvolvingConfig): ExplainReport 
     command: "explain",
     topic: "stage",
     summary: agent
-      ? `${step} — this step only (summary, refs, skip_when). Read evolving.yml for the current step.`
+      ? `${step} — this step only (summary, refs, skip_when, tags). Act on this step, then evolving stages to continue top-down.`
       : `${step} — this step only (summary, refs, skip_when). Machine commands are on evolving explain run if unknown; else evolving run directly.`,
     ok: true,
     exit_code: 0,
@@ -297,10 +297,9 @@ function buildExplainStage(stage: Stage, config: EvolvingConfig): ExplainReport 
       summary: stage.summary ?? null,
       refs: stage.refs ? [...stage.refs] : null,
       skip_when: stage.skip_when ?? null,
+      ...(stage.tags ? { tags: [...stage.tags] } : {}),
     },
-    next: agent
-      ? [readCurrentStepAction(stage.id)]
-      : machineRunNext(stage.id),
+    next: agent ? ["evolving stages"] : machineRunNext(stage.id),
   };
 }
 
@@ -369,8 +368,8 @@ function suggestIndexNext(
   }
   if (!project) return ["evolving explain contract"];
   const first = project.first_stage_id;
-  if (!first) return ["Read evolving.yml"];
-  if (project.agent_stage_ids.includes(first)) return [readCurrentStepAction(first)];
+  if (!first) return ["evolving explain contract"];
+  if (project.agent_stage_ids.includes(first)) return [agentStepAction(first)];
   return machineRunNext(first);
 }
 

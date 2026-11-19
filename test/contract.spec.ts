@@ -35,12 +35,12 @@ describe("agent contract", () => {
     expect(text).toMatch(/do not duplicate/i);
     expect(text).toMatch(/run_in_file_change|command:\/\//i);
     expect(text).toMatch(/CLI panorama/i);
-    expect(text).toMatch(/Read evolving\.yml for the current/i);
+    expect(text).toMatch(/evolving explain <stage-id>/i);
     expect(text).toMatch(/nearest prior agent stage/i);
     expect(text).toMatch(/tags are optional/i);
     expect(text).toMatch(/id\+runnable only/i);
     expect(text).toMatch(/never a bare stage id/i);
-    expect(text).toMatch(/summary, refs, and skip_when only/i);
+    expect(text).toMatch(/summary, refs, skip_when and tags only/i);
     expect(text).toMatch(/explain run if unknown/i);
     expect(text).not.toMatch(/first time/i);
     for (const token of SKIP_WHEN_VOCABULARY) {

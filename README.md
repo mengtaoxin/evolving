@@ -2,7 +2,7 @@
 
 Project-agnostic **ordered stages** checklist and machine-stage runner.
 
-Put an `evolving.yml` (`version: 1`) at the repo root. The CLI loads that file and `spawn`s the commands you declare on machine stages. Formatters, linters, and test runners stay in the consumer repo.
+Declare ordered stages in a `version: 1` config at the repo root. The CLI loads it and `spawn`s the commands you declare on machine stages. Formatters, linters, and test runners stay in the consumer repo.
 
 Designed for **agents first**: progressive `explain` is the **sole protocol source** (downstream AGENTS.md should only point at it), quiet JSON stdout by default, a fixed `contract`, `.evolving/last-run.json` for resume, and OS-tmp step logs for full output.
 
@@ -55,14 +55,16 @@ evolving status
 
 Topics: `contract`, `run`, `stages`, `status`, `json`, `agent`. `evolving explain <stage-id>` returns that step's summary, refs, and skip_when only.
 
-- Agent stages (no `commands`) are **agent-evaluated**; the CLI never executes them. Read `evolving.yml` for the **current** agent step only.
+- Agent stages (no `commands`) are **agent-evaluated**; the CLI never executes them. Run `evolving explain <stage-id>` for the **current** agent step only.
 - Place an **edit** agent stage where the agent should change code (e.g. after orient, before gates). Attach TDD docs via `refs`.
 - `evolving stages` / `explain stages` are a minimal `{id,runnable}` map (+ first), not a full timeline dump.
 - There is **no** fixed finish/wrap-up command — downstream chooses how to batch gates (`--tags` and/or `--ids`).
 - Recommended `skip_when` tokens: `entry_file_known`, `docs_only`, `no_behavior_change`, `already_verified` (free text still allowed).
-- Optional `tags` on any stage: `needs-agent` is a semantic hint; other tags are free text for `evolving run --tags`. Progressive maps stay `{id,runnable}`; Read `evolving.yml` for the current step to see tags.
+- Optional `tags` on any stage: `needs-agent` is a semantic hint; other tags are free text for `evolving run --tags`. Progressive maps stay `{id,runnable}`; run `evolving explain <stage-id>` for the current step to see tags.
 
 ## Config sketch
+
+The default config lives at the repo root (`evolving.yml`; override with `--config <path>`):
 
 ```yaml
 version: 1
@@ -122,4 +124,4 @@ stages:
 - `skip_when` on agent stages is documentation for agents; the CLI does not evaluate it.
 - `tags` are optional (recommended: `needs-agent`). Other tags are consumer-defined; use `evolving run --tags` to filter. Tags are not in the stages map.
 - evolving is a deterministic gate runner + progressive checklist, not an agent runtime (no LangGraph).
-- Agent protocol lives only in `evolving explain` / contract + this repo’s `evolving.yml` — not in a second consumer handbook.
+- Agent protocol lives only in `evolving explain` / contract — not in a second consumer handbook.

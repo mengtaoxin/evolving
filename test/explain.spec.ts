@@ -69,7 +69,7 @@ describe("explain", () => {
     expect(report.project?.machine_stage_ids).toEqual(["prepare", "verify"]);
     expect(report.project?.first_stage_id).toBe("orient");
     expect(report.project?.first_machine_stage_id).toBe("prepare");
-    expect(report.next).toEqual(["Read evolving.yml for the current step (orient)"]);
+    expect(report.next).toEqual(["evolving explain orient"]);
     expect(report.next?.some((item) => item === "orient")).toBe(false);
     expect(report.detail).toMatchObject({ no_panorama: true });
     expect(String((report.detail as { progressive?: string }).progressive)).toMatch(
@@ -137,7 +137,7 @@ describe("explain", () => {
     const report = buildExplainIndex(config, dir);
     expect(report.next).toEqual([
       "evolving status",
-      "Read evolving.yml for the current step (edit)",
+      "evolving explain edit",
       "evolving run verify",
     ]);
   });
@@ -216,7 +216,7 @@ describe("explain", () => {
       refs: ["docs/overview.md"],
       skip_when: "entry_file_known",
     });
-    expect(report.next).toEqual(["Read evolving.yml for the current step (orient)"]);
+    expect(report.next).toEqual(["evolving stages"]);
     expect(report.next).not.toEqual(["explain"]);
     const blob = JSON.stringify(report);
     expect(blob).not.toContain("Change code following TDD");
@@ -235,6 +235,7 @@ describe("explain", () => {
       summary: null,
       refs: null,
       skip_when: null,
+      tags: ["gate"],
     });
     expect(report.next).toEqual([
       "evolving explain run if unknown",
